@@ -29,18 +29,21 @@ app.get("/", (req, res) => {
 // Route Parse Chat
 app.post("/api/parse-chat", async (req, res) => {
   try {
-    const { message, language, categories } = req.body;
+    // 👈 PASTIKAN currency DIAMBIL DARI REQ.BODY
+    const { message, language, categories, currency } = req.body;
+    
     if (!message) {
       return res.status(400).json({ success: false, error: "Pesan tidak boleh kosong." });
     }
-    const data = await parseTransactionText(message, language, categories);
+
+    // 👈 PASS CURRENCY KE AISERVICE
+    const data = await parseTransactionText(message, language, categories, currency);
     return res.json({ success: true, data });
   } catch (error: any) {
     console.error("Error parse-chat:", error);
     return res.status(500).json({ success: false, error: error?.message || "Gagal memproses transaksi." });
   }
 });
-
 // Route Parse Struk
 app.post("/api/parse-receipt", async (req, res) => {
   try {

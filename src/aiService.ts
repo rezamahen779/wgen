@@ -70,27 +70,36 @@ Format Output HANYA JSON MURNI:
  * Pembersih angka murni anti-konversi kurs via Regex
  */
 function parseRawAmount(inputMessage: string, aiAmount: number): number {
-  const msg = inputMessage.toLowerCase();
+  // 1. Bersihkan teks: ubah ke lowercase & hapus sebutan mata uang biar ga bikin bingung regex
+  const msg = inputMessage
+    .toLowerCase()
+    .replace(/(?:yen|jpy|rupiah|rp|usd|dirham|dollar|thb|won)/gi, "")
+    .trim();
 
-  // 1. Cek satuan Man (万) khas Jepang (1 man = 10.000)
+  // 2. Cek Man (万) khas Jepang (3 man -> 30000, 3万 -> 30000)
   const manMatch = msg.match(/(\d+(?:\.\d+)?)\s*(?:man|万)/);
   if (manMatch) {
     return Math.round(parseFloat(manMatch[1]) * 10000);
   }
 
-  // 2. Cek satuan Ribu / K (18rb / 30k -> 18000 / 30000)
+  // 3. Cek Ribu / rb / k (30rb / 30k -> 30000)
   const rbMatch = msg.match(/(\d+(?:\.\d+)?)\s*(?:rb|k|ribu)/);
   if (rbMatch) {
     return Math.round(parseFloat(rbMatch[1]) * 1000);
   }
 
-  // 3. Cek satuan Juta / Jt (1.5jt -> 1500000)
+  // 4. Cek Juta / jt (1.5jt -> 1500000)
   const jtMatch = msg.match(/(\d+(?:\.\d+)?)\s*(?:jt|juta)/);
   if (jtMatch) {
     return Math.round(parseFloat(jtMatch[1]) * 1000000);
   }
 
-  // Jika tidak ada slang yang cocok, gunakan nominal bawaan AI
+  // 5. Cek jika user cuma nulis angka murni tanpa suffix (misal: "makan 30000")
+  const plainNumMatch = msg.match(/(\d+)/);
+  if (plainNumMatch && aiAmount < 1000 && parseFloat(plainNumMatch[1]) >= 1000) {
+    return parseFloat(plainNumMatch[1]);
+  }
+
   return aiAmount;
 }
 
