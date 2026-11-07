@@ -7,20 +7,26 @@ dotenv.config();
 
 const app = express();
 
-// 1. Izinkan CORS Semua Origin
-app.use(cors());
-
-// 2. Tangani HTTP OPTIONS Preflight secara eksplisit (PENTING BIAR GA ERROR 500)
-app.options("*", (req, res) => {
+// 1. Izinkan CORS manual untuk preflight OPTIONS & All Origin
+app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  return res.sendStatus(200);
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+  next();
 });
 
+app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
-// Route API
+// Test Root Endpoint
+app.get("/", (req, res) => {
+  res.send("WGen SANS AI Backend Serverless is Live!");
+});
+
+// Route Parse Chat
 app.post("/api/parse-chat", async (req, res) => {
   try {
     const { message, language, categories } = req.body;
@@ -35,6 +41,7 @@ app.post("/api/parse-chat", async (req, res) => {
   }
 });
 
+// Route Parse Struk
 app.post("/api/parse-receipt", async (req, res) => {
   try {
     const { base64Image, language, categories } = req.body;
@@ -48,10 +55,5 @@ app.post("/api/parse-receipt", async (req, res) => {
     return res.status(500).json({ success: false, error: error?.message || "Gagal memproses struk." });
   }
 });
-
-const PORT = process.env.PORT || 5000;
-if (process.env.NODE_ENV !== "production") {
-  app.listen(PORT, () => console.log(`🚀 Server berjalan di port ${PORT}`));
-}
 
 export default app;
