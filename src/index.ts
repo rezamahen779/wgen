@@ -123,3 +123,5 @@ app.post("/api/parse-receipt", async (req: Request, res: Response) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server backend SANS AI berjalan di http://localhost:${PORT}`);
 });
+// Tambahkan ini di paling bawah server/src/index.ts
+export default app;
