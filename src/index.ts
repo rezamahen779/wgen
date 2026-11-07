@@ -7,18 +7,20 @@ dotenv.config();
 
 const app = express();
 
-// Konfigurasi CORS agar bisa diakses dari browser localhost & APK Android (Capacitor)
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+// 1. Izinkan CORS Semua Origin
+app.use(cors());
+
+// 2. Tangani HTTP OPTIONS Preflight secara eksplisit (PENTING BIAR GA ERROR 500)
+app.options("*", (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  return res.sendStatus(200);
+});
 
 app.use(express.json({ limit: "10mb" }));
 
-// Route parsing teks / chat
+// Route API
 app.post("/api/parse-chat", async (req, res) => {
   try {
     const { message, language, categories } = req.body;
@@ -28,11 +30,11 @@ app.post("/api/parse-chat", async (req, res) => {
     const data = await parseTransactionText(message, language, categories);
     return res.json({ success: true, data });
   } catch (error: any) {
+    console.error("Error parse-chat:", error);
     return res.status(500).json({ success: false, error: error?.message || "Gagal memproses transaksi." });
   }
 });
 
-// Route parsing foto struk
 app.post("/api/parse-receipt", async (req, res) => {
   try {
     const { base64Image, language, categories } = req.body;
@@ -42,17 +44,14 @@ app.post("/api/parse-receipt", async (req, res) => {
     const data = await parseTransactionReceipt(base64Image, language, categories);
     return res.json({ success: true, data });
   } catch (error: any) {
+    console.error("Error parse-receipt:", error);
     return res.status(500).json({ success: false, error: error?.message || "Gagal memproses struk." });
   }
 });
 
-// Jalankan port jika di env lokal
 const PORT = process.env.PORT || 5000;
 if (process.env.NODE_ENV !== "production") {
-  app.listen(PORT, () => {
-    console.log(`🚀 Server WGen Backend berjalan di port ${PORT}`);
-  });
+  app.listen(PORT, () => console.log(`🚀 Server berjalan di port ${PORT}`));
 }
 
-// Export default wajib untuk Vercel Serverless Function
 export default app;
