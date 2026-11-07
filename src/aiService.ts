@@ -24,10 +24,11 @@ export interface ParsedTransaction {
  * Membuat Prompt AI Dinamis berdasarkan Bahasa & Daftar Kategori dari Frontend
  */
 function getSystemPrompt(lang: string = "id", availableCategories: string[] = []): string {
-  const categoriesText = availableCategories.length > 0
-    ? availableCategories.map(c => `"${c}"`).join(", ")
-    : `"Makan & Minum", "Transportasi", "Belanja", "Tagihan", "Gaji", "Lainnya"`;
-  
+  const categoriesText =
+    availableCategories.length > 0
+      ? availableCategories.map((c) => `"${c}"`).join(", ")
+      : `"Makan & Minum", "Transportasi", "Belanja", "Tagihan", "Gaji", "Lainnya"`;
+
   return `
 Nama kamu adalah SANS, asisten AI pencatat keuangan otomatis yang pintar dan fleksibel untuk aplikasi WGen Note.
 Tugasmu adalah menganalisis teks chat, transkrip suara, atau foto struk lalu mengelompokkannya.
@@ -76,8 +77,8 @@ function cleanJsonResponse(rawText: string): any {
  * Parse Transaksi Teks / Chat
  */
 export async function parseTransactionText(
-  userInput: string, 
-  lang: string = "id", 
+  userInput: string,
+  lang: string = "id",
   categories: string[] = []
 ): Promise<ParsedTransaction[]> {
   const freeModels = ["openrouter/auto", "google/gemini-2.0-flash-exp:free"];
@@ -90,8 +91,8 @@ export async function parseTransactionText(
         model: model,
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userInput }
-        ]
+          { role: "user", content: userInput },
+        ],
       });
 
       const content = response.choices[0]?.message?.content;
@@ -113,8 +114,8 @@ export async function parseTransactionText(
  * Parse Transaksi Foto Struk
  */
 export async function parseTransactionReceipt(
-  base64Image: string, 
-  lang: string = "id", 
+  base64Image: string,
+  lang: string = "id",
   categories: string[] = []
 ): Promise<ParsedTransaction[]> {
   const visionModels = ["openrouter/auto", "google/gemini-2.0-flash-exp:free"];
@@ -130,10 +131,10 @@ export async function parseTransactionReceipt(
             role: "user",
             content: [
               { type: "text", text: `${systemPrompt}\nEkstrak item belanja dari struk ini.` },
-              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
-            ]
-          }
-        ]
+              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } },
+            ],
+          },
+        ],
       });
 
       const content = response.choices[0]?.message?.content;
