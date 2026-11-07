@@ -21,13 +21,18 @@ export interface ParsedTransaction {
 }
 
 /**
- * Membuat Prompt AI Dinamis berdasarkan Bahasa & Daftar Kategori dari Frontend
+ * Membuat Prompt AI Dinamis berdasarkan Bahasa, Mata Uang, & Kategori
  */
-function getSystemPrompt(lang: string = "id", availableCategories: string[] = [], currency: string = "JPY"): string {
-  const categoriesText = availableCategories.length > 0
-    ? availableCategories.map(c => `"${c}"`).join(", ")
-    : `"Makan & Minum", "Transportasi", "Belanja", "Tagihan", "Gaji", "Lainnya"`;
-  
+function getSystemPrompt(
+  lang: string = "id",
+  availableCategories: string[] = [],
+  currency: string = "JPY"
+): string {
+  const categoriesText =
+    availableCategories.length > 0
+      ? availableCategories.map((c) => `"${c}"`).join(", ")
+      : `"Makan & Minum", "Transportasi", "Belanja", "Tagihan", "Gaji", "Lainnya"`;
+
   return `
 Nama kamu adalah SANS, asisten AI pencatat keuangan otomatis untuk aplikasi WGen Note.
 
@@ -35,7 +40,7 @@ STRICT RULE NOMINAL / AMOUNT:
 1. DILARANG KERAS MENGONVERSI MATA UANG! Jangan pernah menghitung kurs (seperti mengubah IDR ke JPY).
 2. Nilai 'amount' HARUS DALAM ANGKA MATEMATIK ASLI sesuai input user:
    - "30rb" / "30k" = 30000
-   - "30 man" / "3万" / "30萬" = 300000 (1 man = 10.000)
+   - "30 man" / "30万" = 300000 (1 man = 10.000)
    - "3 man" / "3万" = 30000
    - "1.5jt" = 1500000
    - "3000 yen" / "3000" = 3000
@@ -43,6 +48,7 @@ STRICT RULE NOMINAL / AMOUNT:
 
 METADATA:
 - Bahasa judul ('title'): Gunakan bahasa [${lang.toUpperCase()}].
+- Mata Uang Utama Aplikasi: [${currency}].
 - Kategori wajib pilih persis dari daftar ini: [${categoriesText}].
 
 Format Output HANYA JSON MURNI:
@@ -58,6 +64,34 @@ Format Output HANYA JSON MURNI:
   ]
 }
 `;
+}
+
+/**
+ * Pembersih angka murni anti-konversi kurs via Regex
+ */
+function parseRawAmount(inputMessage: string, aiAmount: number): number {
+  const msg = inputMessage.toLowerCase();
+
+  // 1. Cek satuan Man (万) khas Jepang (1 man = 10.000)
+  const manMatch = msg.match(/(\d+(?:\.\d+)?)\s*(?:man|万)/);
+  if (manMatch) {
+    return Math.round(parseFloat(manMatch[1]) * 10000);
+  }
+
+  // 2. Cek satuan Ribu / K (18rb / 30k -> 18000 / 30000)
+  const rbMatch = msg.match(/(\d+(?:\.\d+)?)\s*(?:rb|k|ribu)/);
+  if (rbMatch) {
+    return Math.round(parseFloat(rbMatch[1]) * 1000);
+  }
+
+  // 3. Cek satuan Juta / Jt (1.5jt -> 1500000)
+  const jtMatch = msg.match(/(\d+(?:\.\d+)?)\s*(?:jt|juta)/);
+  if (jtMatch) {
+    return Math.round(parseFloat(jtMatch[1]) * 1000000);
+  }
+
+  // Jika tidak ada slang yang cocok, gunakan nominal bawaan AI
+  return aiAmount;
 }
 
 /**
@@ -81,14 +115,15 @@ function cleanJsonResponse(rawText: string): any {
 export async function parseTransactionText(
   userInput: string,
   lang: string = "id",
-  categories: string[] = []
+  categories: string[] = [],
+  currency: string = "JPY"
 ): Promise<ParsedTransaction[]> {
-  const freeModels = ["openrouter/auto", "google/gemini-2.0-flash-exp:free"];
-  const systemPrompt = getSystemPrompt(lang, categories);
+  const freeModels = ["google/gemini-2.0-flash-exp:free", "openrouter/auto"];
+  const systemPrompt = getSystemPrompt(lang, categories, currency);
 
   for (const model of freeModels) {
     try {
-      console.log(`🤖 SANS AI dipanggil [lang: ${lang}] via model: ${model}...`);
+      console.log(`🤖 SANS AI dipanggil [lang: ${lang}, curr: ${currency}] via model: ${model}...`);
       const response = await openrouter.chat.completions.create({
         model: model,
         messages: [
@@ -102,7 +137,10 @@ export async function parseTransactionText(
 
       const parsed = cleanJsonResponse(content);
       if (parsed && Array.isArray(parsed.transactions) && parsed.transactions.length > 0) {
-        return parsed.transactions;
+        return parsed.transactions.map((transaction: any) => ({
+          ...transaction,
+          amount: parseRawAmount(userInput, Number(transaction.amount) || 0),
+        }));
       }
     } catch (error: any) {
       console.warn(`⚠️ Model ${model} gagal:`, error?.message || error);
@@ -118,14 +156,15 @@ export async function parseTransactionText(
 export async function parseTransactionReceipt(
   base64Image: string,
   lang: string = "id",
-  categories: string[] = []
+  categories: string[] = [],
+  currency: string = "JPY"
 ): Promise<ParsedTransaction[]> {
-  const visionModels = ["openrouter/auto", "google/gemini-2.0-flash-exp:free"];
-  const systemPrompt = getSystemPrompt(lang, categories);
+  const visionModels = ["google/gemini-2.0-flash-exp:free", "openrouter/auto"];
+  const systemPrompt = getSystemPrompt(lang, categories, currency);
 
   for (const model of visionModels) {
     try {
-      console.log(`📷 SANS AI Vision dipanggil [lang: ${lang}] via model: ${model}...`);
+      console.log(`📷 SANS AI Vision dipanggil [lang: ${lang}, curr: ${currency}] via model: ${model}...`);
       const response = await openrouter.chat.completions.create({
         model: model,
         messages: [
