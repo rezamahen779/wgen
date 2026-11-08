@@ -21,45 +21,60 @@ export interface ParsedTransaction {
 }
 
 /**
- * Membuat Prompt AI Dinamis berdasarkan Bahasa, Mata Uang, & Kategori
+ * Pemetaan Kode Bahasa ke Nama Bahasa untuk Prompt AI
+ */
+function getLanguageName(langCode: string): string {
+  const map: Record<string, string> = {
+    id: "Indonesian",
+    jp: "Japanese",
+    en: "English",
+    ar: "Arabic",
+    cn: "Chinese (Simplified)"
+  };
+  return map[langCode.toLowerCase()] || "Indonesian";
+}
+
+/**
+ * Membuat Prompt AI Dinamis berdasarkan Bahasa (5 Bahasa), Mata Uang (13 Mata Uang), & Kategori
  */
 function getSystemPrompt(
   lang: string = "id",
   availableCategories: string[] = [],
   currency: string = "JPY"
 ): string {
+  const targetLanguage = getLanguageName(lang);
   const categoriesText =
     availableCategories.length > 0
       ? availableCategories.map((c) => `"${c}"`).join(", ")
-      : `"Makan & Minum", "Transportasi", "Belanja", "Tagihan", "Gaji", "Lainnya"`;
+      : `"Makan dan minum", "Transportasi", "Belanja", "Tagihan Listrik", "Gaji", "Lainnya"`;
 
   return `
 Nama kamu adalah SANS, asisten AI pencatat keuangan otomatis untuk aplikasi WGen Note.
 
 STRICT RULE NOMINAL / AMOUNT:
-1. DILARANG KERAS MENGONVERSI MATA UANG! Jangan pernah menghitung kurs (seperti mengubah IDR ke JPY).
+1. DILARANG KERAS MENGONVERSI MATA UANG! Jangan pernah menghitung kurs (seperti mengubah IDR ke JPY, USD ke IDR, dll).
 2. Nilai 'amount' HARUS DALAM ANGKA MATEMATIK ASLI sesuai input user:
    - "30rb" / "30k" = 30000
-   - "30 man" / "30万" = 300000 (1 man = 10.000)
+   - "30 man" / "3万" = 300000 (1 man = 10.000)
    - "3 man" / "3万" = 30000
-   - "1.5jt" = 1500000
+   - "1.5jt" / "1.5m" = 1500000
    - "3000 yen" / "3000" = 3000
-3. Apapun teksnya (30rb yen, 30k yen, 3万 yen), hitung angka matematikanya saja tanpa mengabaikan nol-nya.
+3. Apapun teksnya, hitung angka matematikanya saja tanpa mengabaikan nol-nya.
 
 METADATA:
-- Bahasa judul ('title'): Gunakan bahasa [${lang.toUpperCase()}].
+- Bahasa judul ('title'): WAJIB menggunakan bahasa ${targetLanguage}.
 - Mata Uang Utama Aplikasi: [${currency}].
-- Kategori wajib pilih persis dari daftar ini: [${categoriesText}].
+- Kategori wajib pilih PERSIS dari daftar ini (sesuai bahasa terpilih): [${categoriesText}].
 
 Format Output HANYA JSON MURNI:
 {
   "transactions": [
     {
-      "title": "Nama item dalam bahasa ${lang}",
+      "title": "Judul item dalam bahasa ${targetLanguage}",
       "amount": 30000,
       "type": "expense",
-      "category": "PILIH_SALAH_SATU_DARI_LIST",
-      "payment_method": "Tunai"
+      "category": "PILIH_PERSIS_DARI_DAFTAR_KATEGORI",
+      "payment_method": "Cash/Tunai/Transfer"
     }
   ]
 }
@@ -70,10 +85,10 @@ Format Output HANYA JSON MURNI:
  * Pembersih angka murni anti-konversi kurs via Regex
  */
 function parseRawAmount(inputMessage: string, aiAmount: number): number {
-  // 1. Bersihkan teks: ubah ke lowercase & hapus sebutan mata uang biar ga bikin bingung regex
+  // 1. Bersihkan teks: hapus sebutan 13 mata uang utama agar regex nominal presisi
   const msg = inputMessage
     .toLowerCase()
-    .replace(/(?:yen|jpy|rupiah|rp|usd|dirham|dollar|thb|won)/gi, "")
+    .replace(/(?:jpy|yen|idr|rupiah|rp|usd|dollar|eur|euro|gbp|pound|sgd|myr|ringgit|krw|won|thb|baht|aud|cny|yuan|aed|dirham|sar|riyal)/gi, "")
     .trim();
 
   // 2. Cek Man (万) khas Jepang (3 man -> 30000, 3万 -> 30000)
@@ -88,13 +103,13 @@ function parseRawAmount(inputMessage: string, aiAmount: number): number {
     return Math.round(parseFloat(rbMatch[1]) * 1000);
   }
 
-  // 4. Cek Juta / jt (1.5jt -> 1500000)
-  const jtMatch = msg.match(/(\d+(?:\.\d+)?)\s*(?:jt|juta)/);
+  // 4. Cek Juta / jt / m (1.5jt -> 1500000)
+  const jtMatch = msg.match(/(\d+(?:\.\d+)?)\s*(?:jt|juta|m)/);
   if (jtMatch) {
     return Math.round(parseFloat(jtMatch[1]) * 1000000);
   }
 
-  // 5. Cek jika user cuma nulis angka murni tanpa suffix (misal: "makan 30000")
+  // 5. Cek jika user nulis angka murni tanpa suffix
   const plainNumMatch = msg.match(/(\d+)/);
   if (plainNumMatch && aiAmount < 1000 && parseFloat(plainNumMatch[1]) >= 1000) {
     return parseFloat(plainNumMatch[1]);
@@ -127,7 +142,7 @@ export async function parseTransactionText(
   categories: string[] = [],
   currency: string = "JPY"
 ): Promise<ParsedTransaction[]> {
-  const freeModels = ["google/gemini-2.0-flash-exp:free", "openrouter/auto"];
+  const freeModels = ["google/gemini-2.0-flash-exp:free", "meta-llama/llama-3.3-70b-instruct:free", "openrouter/auto"];
   const systemPrompt = getSystemPrompt(lang, categories, currency);
 
   for (const model of freeModels) {

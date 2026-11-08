@@ -29,14 +29,12 @@ app.get("/", (req, res) => {
 // Route Parse Chat
 app.post("/api/parse-chat", async (req, res) => {
   try {
-    // 👈 PASTIKAN currency DIAMBIL DARI REQ.BODY
     const { message, language, categories, currency } = req.body;
     
     if (!message) {
       return res.status(400).json({ success: false, error: "Pesan tidak boleh kosong." });
     }
 
-    // 👈 PASS CURRENCY KE AISERVICE
     const data = await parseTransactionText(message, language, categories, currency);
     return res.json({ success: true, data });
   } catch (error: any) {
@@ -44,14 +42,17 @@ app.post("/api/parse-chat", async (req, res) => {
     return res.status(500).json({ success: false, error: error?.message || "Gagal memproses transaksi." });
   }
 });
-// Route Parse Struk
+
+// Route Parse Struk (PERBAIKAN: Ambil & Pass currency)
 app.post("/api/parse-receipt", async (req, res) => {
   try {
-    const { base64Image, language, categories } = req.body;
+    const { base64Image, language, categories, currency } = req.body; // 👈 DITAMBAHKAN currency
     if (!base64Image) {
       return res.status(400).json({ success: false, error: "Gambar struk tidak boleh kosong." });
     }
-    const data = await parseTransactionReceipt(base64Image, language, categories);
+    
+    // Pass currency ke parseTransactionReceipt
+    const data = await parseTransactionReceipt(base64Image, language, categories, currency);
     return res.json({ success: true, data });
   } catch (error: any) {
     console.error("Error parse-receipt:", error);
