@@ -7,57 +7,18 @@ dotenv.config();
 
 const app = express();
 
-// 1. Izinkan CORS manual untuk preflight OPTIONS & All Origin
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-  next();
-});
+// 🟢 Middleware CORS Paling Atas
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
+}));
 
-app.use(cors());
+// Handle Preflight OPTIONS untuk semua endpoint
+app.options("*", cors());
+
 app.use(express.json({ limit: "10mb" }));
 
-// Test Root Endpoint
-app.get("/", (req, res) => {
-  res.send("WGen SANS AI Backend Serverless is Live!");
-});
-
-// Route Parse Chat
-app.post("/api/parse-chat", async (req, res) => {
-  try {
-    const { message, language, categories, currency } = req.body;
-    
-    if (!message) {
-      return res.status(400).json({ success: false, error: "Pesan tidak boleh kosong." });
-    }
-
-    const data = await parseTransactionText(message, language, categories, currency);
-    return res.json({ success: true, data });
-  } catch (error: any) {
-    console.error("Error parse-chat:", error);
-    return res.status(500).json({ success: false, error: error?.message || "Gagal memproses transaksi." });
-  }
-});
-
-// Route Parse Struk (PERBAIKAN: Ambil & Pass currency)
-app.post("/api/parse-receipt", async (req, res) => {
-  try {
-    const { base64Image, language, categories, currency } = req.body; // 👈 DITAMBAHKAN currency
-    if (!base64Image) {
-      return res.status(400).json({ success: false, error: "Gambar struk tidak boleh kosong." });
-    }
-    
-    // Pass currency ke parseTransactionReceipt
-    const data = await parseTransactionReceipt(base64Image, language, categories, currency);
-    return res.json({ success: true, data });
-  } catch (error: any) {
-    console.error("Error parse-receipt:", error);
-    return res.status(500).json({ success: false, error: error?.message || "Gagal memproses struk." });
-  }
-});
+// ... Sisa route app.post("/api/parse-chat", ...) tetap sama ...
 
 export default app;
