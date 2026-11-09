@@ -30,11 +30,15 @@ function getLanguageName(langCode: string): string {
     jp: "Japanese",
     en: "English",
     ar: "Arabic",
-    cn: "Chinese (Simplified)"
+    cn: "Chinese (Simplified)",
   };
   return map[langCode.toLowerCase()] || "Indonesian";
 }
 
+/**
+ * Prompt AI: Menyerahkan klasifikasi kata (pakaian, hiburan, makanan, dll) 
+ * sepenuhnya ke LLM secara otomatis.
+ */
 function getSystemPrompt(
   lang: string = "id",
   availableCategories: string[] = [],
@@ -44,14 +48,17 @@ function getSystemPrompt(
   const categoriesText =
     availableCategories.length > 0
       ? availableCategories.map((c) => `"${c}"`).join(", ")
-      : `"Makan dan minum", "Belanja", "Shopping", "Food & Drinks", "Transportasi", "Gaji", "Lainnya"`;
+      : `"Makan & Minum", "Belanja", "Shopping", "Food & Drinks", "Transportasi", "Gaji", "Lainnya"`;
 
   return `
 Nama kamu adalah SANS, asisten AI pencatat keuangan otomatis untuk aplikasi WGen Note.
 
+TUGAS UTAMA:
+Analisis pesan/gambar transaksi pengguna dan ekstrak ke JSON.
+
 STRICT RULE NOMINAL / AMOUNT:
-1. DILARANG KERAS MENGONVERSI MATA UANG DALAM BENTUK APA PUN! (Jangan pernah menghitung kurs IDR ke JPY, JPY ke IDR, USD, dll).
-2. Ambil HANYA ANGKA NOMINAL MATEMATIKA ASLI yang ditulis user:
+1. DILARANG KERAS MENGONVERSI MATA UANG DALAM BENTUK APA PUN! (Jangan hitung kurs IDR, JPY, USD, dll).
+2. Ambil ANGKA NOMINAL MATEMATIKA ASLI yang ditulis user:
    - "30rb yen" -> amount = 30000
    - "30k idr" -> amount = 30000
    - "3 man yen" / "3万" -> amount = 30000
@@ -61,15 +68,17 @@ STRICT RULE NOMINAL / AMOUNT:
 
 STRICT RULE MATA UANG (CURRENCY DETECTION):
 Daftar mata uang yang didukung: [AED, AUD, CNY, EUR, GBP, IDR, JPY, KRW, MYR, SAR, SGD, THB, USD].
-1. Jika user menyebutkan kata 'rupiah', 'idr', atau 'rp' -> WAJIB set "currency": "IDR"
-2. Jika user menyebutkan kata 'yen', 'jpy', '万', atau '円' -> WAJIB set "currency": "JPY"
-3. Jika user TIDAK menyebutkan nama mata uang -> WAJIB set "currency": "${currency}" (Gunakan Mata Uang Utama Aplikasi).
+1. Jika user menyebutkan kata/simbol mata uang (misal: 'usd', '$', 'rupiah', 'idr', 'rp', 'yen', 'jpy', '万', '円', 'eur', 'sgd') -> WAJIB set "currency" sesuai kode standar ISO tersebut.
+2. Jika user TIDAK menyebutkan mata uang -> WAJIB set "currency": "${currency}".
 
-STRICT RULE PEMETAAN KATEGORI (CATEGORY MATCHING):
-Pilih kategori yang PALING COCOK dari daftar ini: [${categoriesText}].
-- Kata kunci baju, celana, pakaian, sepatu, tas -> WAJIB PILIH kategori Belanja ("Shopping" / "Belanja" / "ショッピング").
-- Kata kunci makan, minum, ayam, bakmi, kopi, nasi -> WAJIB PILIH kategori Makan ("Food & Drinks" / "Makan dan minum" / "飲食").
-- Kata kunci bensin, transport, bus, kereta -> WAJIB PILIH kategori Transportasi ("Transportation" / "Transportasi" / "交通費").
+STRICT RULE PEMETAAN KATEGORI (CATEGORY MATCHING OTOMATIS):
+Pilih SATU kategori yang PALING LOGIS dan SESUAI PERSIS dari daftar ini: [${categoriesText}].
+- Gunakan pemahaman bahasa kamu secara alami:
+  * Pakaian, sepatu, aksesoris, barang belanjaan, tas -> Pilih kategori Belanja / Shopping.
+  * Makanan, minuman, kopi, kuliner, restoran -> Pilih kategori Makan & Minum / Food & Drinks.
+  * Langganan digital, film, game, hiburan, musik (misal: Netflix, Spotify, Steam) -> Pilih kategori Entertainment / Hiburan / Tagihan.
+  * Ongkos, bensin, tiket kendaraan, transportasi -> Pilih kategori Transportasi.
+- String kategori yang kamu kembalikan HARUS SAMA PERSIS dengan salah satu pilihan di [${categoriesText}].
 
 METADATA:
 - Bahasa judul ('title') dan catatan ('note'): WAJIB menggunakan bahasa ${targetLanguage}.
@@ -79,12 +88,12 @@ Format Output HANYA JSON MURNI:
 {
   "transactions": [
     {
-      "title": "Judul item",
+      "title": "nama item",
       "amount": 30000,
       "type": "expense",
-      "category": "PILIH_PERSIS_DARI_DAFTAR_KATEGORI",
+      "category": "NAMA_KATEGORI_EXACT_MATCH",
       "payment_method": "Cash",
-      "currency": "KODE_CURRENCY_HASIL_DETEKSI",
+      "currency": "KODE_CURRENCY",
       "note": ""
     }
   ]
@@ -92,34 +101,52 @@ Format Output HANYA JSON MURNI:
 `;
 }
 
+/**
+ * Parsing Angka dan Suffix (rb, k, man, jt, dll)
+ */
 function parseRawAmount(inputMessage: string, aiAmount: number): number {
   const msg = inputMessage.toLowerCase().trim();
 
-  // 1. Cek Man (万) khas Jepang (3 man -> 30000, 3万 -> 30000)
-  const manMatch = msg.match(/(\d+(?:\.\d+)?)\s*(?:man|万)/);
+  // 1. Man / 万 (Jepang)
+  const manMatch = msg.match(/(\d+(?:[\.,]\d+)?)\s*(?:man|万)/);
   if (manMatch) {
-    return Math.round(parseFloat(manMatch[1]) * 10000);
+    return Math.round(parseFloat(manMatch[1].replace(',', '.')) * 10000);
   }
 
-  // 2. Cek Ribu / rb / k (30rb yen / 30k -> 30000)
-  const rbMatch = msg.match(/(\d+(?:\.\d+)?)\s*(?:rb|k|ribu)/);
+  // 2. Ribu / rb / k
+  const rbMatch = msg.match(/(\d+(?:[\.,]\d+)?)\s*(?:rb|k|ribu)/);
   if (rbMatch) {
-    return Math.round(parseFloat(rbMatch[1]) * 1000);
+    return Math.round(parseFloat(rbMatch[1].replace(',', '.')) * 1000);
   }
 
-  // 3. Cek Juta / jt / m (1.5jt -> 1500000)
-  const jtMatch = msg.match(/(\d+(?:\.\d+)?)\s*(?:jt|juta|m)/);
+  // 3. Juta / jt / m
+  const jtMatch = msg.match(/(\d+(?:[\.,]\d+)?)\s*(?:jt|juta|m)/);
   if (jtMatch) {
-    return Math.round(parseFloat(jtMatch[1]) * 1000000);
+    return Math.round(parseFloat(jtMatch[1].replace(',', '.')) * 1000000);
   }
 
-  // 4. Jika user hanya menulis angka murni
+  // 4. Fallback jika AI mengembalikan 0
   const plainNumMatch = msg.replace(/[^\d]/g, "");
   if (plainNumMatch && aiAmount === 0) {
     return parseFloat(plainNumMatch);
   }
 
   return aiAmount;
+}
+
+/**
+ * Deteksi Currency dari Teks Input (Safety Net)
+ */
+function detectCurrencyFromInput(input: string, defaultCurr: string): string {
+  const clean = input.toLowerCase();
+  if (/\b(usd|\$|dollar|dolar)\b/i.test(clean)) return 'USD';
+  if (/\b(yen|jpy|万|円)\b/i.test(clean)) return 'JPY';
+  if (/\b(rupiah|idr|rp)\b/i.test(clean)) return 'IDR';
+  if (/\b(eur|euro)\b/i.test(clean)) return 'EUR';
+  if (/\b(sgd)\b/i.test(clean)) return 'SGD';
+  if (/\b(gbp|pound)\b/i.test(clean)) return 'GBP';
+  if (/\b(myr|rm|ringgit)\b/i.test(clean)) return 'MYR';
+  return defaultCurr;
 }
 
 function cleanJsonResponse(rawText: string): any {
@@ -142,8 +169,9 @@ export async function parseTransactionText(
 ): Promise<ParsedTransaction[]> {
   const activeLangCategories =
     CATEGORIES_BY_LANG[lang as keyof typeof CATEGORIES_BY_LANG] || CATEGORIES_BY_LANG["id"];
-  const finalCategories = categories.length > 0 
-    ? categories 
+  
+  const finalCategories = categories.length > 0
+    ? categories
     : [
         ...(activeLangCategories?.expenseRoutine || []),
         ...(activeLangCategories?.expenseAsset || []),
@@ -169,40 +197,30 @@ export async function parseTransactionText(
       if (!content) continue;
 
       const parsed = cleanJsonResponse(content);
-  if (parsed && Array.isArray(parsed.transactions) && parsed.transactions.length > 0) {
-    return parsed.transactions.map((transaction: any) => {
-      let detectedCurrency = transaction.currency;
-      const lowerInput = userInput.toLowerCase();
-      
-      if (lowerInput.includes('yen') || lowerInput.includes('jpy') || lowerInput.includes('万') || lowerInput.includes('円')) {
-        detectedCurrency = 'JPY';
-      } else if (lowerInput.includes('rupiah') || lowerInput.includes('idr') || lowerInput.includes('rp')) {
-        detectedCurrency = 'IDR';
-      }
+      if (parsed && Array.isArray(parsed.transactions) && parsed.transactions.length > 0) {
+        return parsed.transactions.map((transaction: any) => {
+          // 1. Deteksi Currency
+          const detectedCurrency = detectCurrencyFromInput(userInput, transaction.currency || currency);
 
-      // 🟢 PERBAIKAN MATEN: Smart Matching Kategori
-      let matchedCategory = transaction.category;
-      
-      // Jika AI balikin "Belanja" atau "Shopping" atau input ada kata baju/kaos/dll
-      if (/(baju|celana|pakaian|sepatu|tas|kaos|kemeja|belanja|shopping)/i.test(userInput) || 
-          /(belanja|shopping)/i.test(transaction.category)) {
-        matchedCategory = finalCategories.find(c => /(belanja|shopping|服|買)/i.test(c)) || transaction.category;
-      } else if (/(makan|minum|kopi|nasi|ayam|food|drink)/i.test(userInput) || 
-                 /(makan|food)/i.test(transaction.category)) {
-        matchedCategory = finalCategories.find(c => /(makan|food|drink|飲食)/i.test(c)) || transaction.category;
-      }
+          // 2. Pencocokan Kategori Otomatis:
+          // Cari kategori yang eksak dari list UI. Jika AI mengembalikan key mentah, lewatkan ke CategoryHelper.
+          const rawCat = transaction.category || "";
+          const exactMatch = finalCategories.find(
+            (c) => c.toLowerCase() === rawCat.toLowerCase()
+          );
 
-      return {
-        ...transaction,
-        amount: parseRawAmount(userInput, Number(transaction.amount) || 0),
-        category: matchedCategory, // Gunakan kategori yang udah pasti cocok sama list UI
-        currency: detectedCurrency || currency,
-        note: transaction.note || "",
-      };
-    });
-  }
-} 
-    catch (error: any) {
+          const matchedCategory = exactMatch || getStandardCategoryValue(rawCat) || rawCat || finalCategories[0];
+
+          return {
+            ...transaction,
+            amount: parseRawAmount(userInput, Number(transaction.amount) || 0),
+            category: matchedCategory,
+            currency: detectedCurrency,
+            note: transaction.note || "",
+          };
+        });
+      }
+    } catch (error: any) {
       console.warn(`⚠️ Model ${model} gagal:`, error?.message || error);
     }
   }
@@ -217,9 +235,10 @@ export async function parseTransactionReceipt(
   currency: string = "JPY"
 ): Promise<ParsedTransaction[]> {
   const activeLangCategories =
-    CATEGORIES_BY_LANG[lang as keyof typeof CATEGORIES_BY_LANG] || CATEGORIES_BY_LANG.id;
-  const finalCategories = categories.length > 0 
-    ? categories 
+    CATEGORIES_BY_LANG[lang as keyof typeof CATEGORIES_BY_LANG] || CATEGORIES_BY_LANG["id"];
+  
+  const finalCategories = categories.length > 0
+    ? categories
     : [
         ...(activeLangCategories?.expenseRoutine || []),
         ...(activeLangCategories?.expenseAsset || []),
@@ -249,12 +268,19 @@ export async function parseTransactionReceipt(
 
       const parsed = cleanJsonResponse(content);
       if (parsed && Array.isArray(parsed.transactions) && parsed.transactions.length > 0) {
-        return parsed.transactions.map((transaction: any) => ({
-          ...transaction,
-          category: getStandardCategoryValue(transaction.category) || transaction.category,
-          currency: transaction.currency || currency,
-          note: transaction.note || "",
-        }));
+        return parsed.transactions.map((transaction: any) => {
+          const rawCat = transaction.category || "";
+          const exactMatch = finalCategories.find(
+            (c) => c.toLowerCase() === rawCat.toLowerCase()
+          );
+
+          return {
+            ...transaction,
+            category: exactMatch || getStandardCategoryValue(rawCat) || rawCat,
+            currency: transaction.currency || currency,
+            note: transaction.note || "",
+          };
+        });
       }
     } catch (error: any) {
       console.warn(`⚠️ Vision model ${model} gagal:`, error?.message || error);
