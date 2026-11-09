@@ -20,12 +20,10 @@ export interface ParsedTransaction {
   payment_method?: string;
 }
 
-/**
- * Pemetaan Kode Bahasa ke Nama Bahasa untuk Prompt AI
- */
 function getLanguageName(langCode: string): string {
   const map: Record<string, string> = {
     id: "Indonesian",
+    ja: "Japanese",
     jp: "Japanese",
     en: "English",
     ar: "Arabic",
@@ -34,9 +32,6 @@ function getLanguageName(langCode: string): string {
   return map[langCode.toLowerCase()] || "Indonesian";
 }
 
-/**
- * Membuat Prompt AI Dinamis berdasarkan Bahasa (5 Bahasa), Mata Uang (13 Mata Uang), & Kategori
- */
 function getSystemPrompt(
   lang: string = "id",
   availableCategories: string[] = [],
@@ -52,75 +47,65 @@ function getSystemPrompt(
 Nama kamu adalah SANS, asisten AI pencatat keuangan otomatis untuk aplikasi WGen Note.
 
 STRICT RULE NOMINAL / AMOUNT:
-1. DILARANG KERAS MENGONVERSI MATA UANG! Jangan pernah menghitung kurs (seperti mengubah IDR ke JPY, USD ke IDR, dll).
-2. Nilai 'amount' HARUS DALAM ANGKA MATEMATIK ASLI sesuai input user:
-   - "30rb" / "30k" = 30000
-   - "30 man" / "3万" = 300000 (1 man = 10.000)
-   - "3 man" / "3万" = 30000
-   - "1.5jt" / "1.5m" = 1500000
-   - "3000 yen" / "3000" = 3000
-3. Apapun teksnya, hitung angka matematikanya saja tanpa mengabaikan nol-nya.
+1. DILARANG KERAS MENGONVERSI MATA UANG DALAM BENTUK APA PUN! (Jangan pernah menghitung kurs IDR ke JPY, JPY ke IDR, USD, dll).
+2. Abaikan sebutan nama mata uang (yen, rupiah, dollar, dll). Ambil HANYA ANGKA NOMINAL MATEMATIKA ASLI yang ditulis user:
+   - "30rb yen" -> amount = 30000 (Bukan konversi, ambil angka 30rb = 30000)
+   - "30k idr" -> amount = 30000
+   - "3 man yen" / "3万" -> amount = 30000
+   - "3000 yen" -> amount = 3000
+   - "1.5jt" -> amount = 1500000
+3. Apabila user menyebutkan suffix satuan (rb, k, man,万, jt, m), hitung perkalian matematikanya langsung tanpa mengubah nilai ke mata uang lain.
 
 METADATA:
 - Bahasa judul ('title'): WAJIB menggunakan bahasa ${targetLanguage}.
 - Mata Uang Utama Aplikasi: [${currency}].
-- Kategori wajib pilih PERSIS dari daftar ini (sesuai bahasa terpilih): [${categoriesText}].
+- Kategori wajib pilih PERSIS salah satu dari daftar ini: [${categoriesText}].
 
 Format Output HANYA JSON MURNI:
 {
   "transactions": [
     {
-      "title": "Judul item dalam bahasa ${targetLanguage}",
+      "title": "Judul item",
       "amount": 30000,
       "type": "expense",
       "category": "PILIH_PERSIS_DARI_DAFTAR_KATEGORI",
-      "payment_method": "Cash/Tunai/Transfer"
+      "payment_method": "Cash"
     }
   ]
 }
 `;
 }
 
-/**
- * Pembersih angka murni anti-konversi kurs via Regex
- */
 function parseRawAmount(inputMessage: string, aiAmount: number): number {
-  // 1. Bersihkan teks: hapus sebutan 13 mata uang utama agar regex nominal presisi
-  const msg = inputMessage
-    .toLowerCase()
-    .replace(/(?:jpy|yen|idr|rupiah|rp|usd|dollar|eur|euro|gbp|pound|sgd|myr|ringgit|krw|won|thb|baht|aud|cny|yuan|aed|dirham|sar|riyal)/gi, "")
-    .trim();
+  const msg = inputMessage.toLowerCase().trim();
 
-  // 2. Cek Man (万) khas Jepang (3 man -> 30000, 3万 -> 30000)
+  // 1. Cek Man (万) khas Jepang (3 man -> 30000, 3万 -> 30000)
   const manMatch = msg.match(/(\d+(?:\.\d+)?)\s*(?:man|万)/);
   if (manMatch) {
     return Math.round(parseFloat(manMatch[1]) * 10000);
   }
 
-  // 3. Cek Ribu / rb / k (30rb / 30k -> 30000)
+  // 2. Cek Ribu / rb / k (30rb yen / 30k -> 30000)
   const rbMatch = msg.match(/(\d+(?:\.\d+)?)\s*(?:rb|k|ribu)/);
   if (rbMatch) {
     return Math.round(parseFloat(rbMatch[1]) * 1000);
   }
 
-  // 4. Cek Juta / jt / m (1.5jt -> 1500000)
+  // 3. Cek Juta / jt / m (1.5jt -> 1500000)
   const jtMatch = msg.match(/(\d+(?:\.\d+)?)\s*(?:jt|juta|m)/);
   if (jtMatch) {
     return Math.round(parseFloat(jtMatch[1]) * 1000000);
   }
 
-  // 5. Cek jika user nulis angka murni tanpa suffix
-  const plainNumMatch = msg.match(/(\d+)/);
-  if (plainNumMatch && aiAmount < 1000 && parseFloat(plainNumMatch[1]) >= 1000) {
-    return parseFloat(plainNumMatch[1]);
+  // 4. Jika user hanya menulis angka murni
+  const plainNumMatch = msg.replace(/[^\d]/g, "");
+  if (plainNumMatch && aiAmount === 0) {
+    return parseFloat(plainNumMatch);
   }
 
   return aiAmount;
 }
 
-/**
- * Helper Pembersih JSON Respons AI
- */
 function cleanJsonResponse(rawText: string): any {
   try {
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
@@ -133,9 +118,6 @@ function cleanJsonResponse(rawText: string): any {
   }
 }
 
-/**
- * Parse Transaksi Teks / Chat
- */
 export async function parseTransactionText(
   userInput: string,
   lang: string = "id",
@@ -174,9 +156,6 @@ export async function parseTransactionText(
   throw new Error("SANS gagal menguraikan transaksi.");
 }
 
-/**
- * Parse Transaksi Foto Struk
- */
 export async function parseTransactionReceipt(
   base64Image: string,
   lang: string = "id",
