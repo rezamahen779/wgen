@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import dotenv from "dotenv";
+import { CATEGORIES_BY_LANG, getStandardCategoryValue } from "./CategoryHelper";
 
 dotenv.config();
 
@@ -10,7 +11,7 @@ const openrouter = new OpenAI({
     "HTTP-Referer": "http://localhost:5173",
     "X-Title": "WGen Note SANS AI",
   },
-});
+})
 
 export interface ParsedTransaction {
   title: string;
@@ -43,46 +44,48 @@ function getSystemPrompt(
   const categoriesText =
     availableCategories.length > 0
       ? availableCategories.map((c) => `"${c}"`).join(", ")
-      : `"Makan dan minum", "Transportasi", "Belanja", "Tagihan Listrik", "Gaji", "Lainnya"`;
+      : `"Makan dan minum", "Food & Drinks", "Belanja", "Shopping", "Transportasi", "Gaji", "Lainnya"`;
 
   return `
 Nama kamu adalah SANS, asisten AI pencatat keuangan otomatis untuk aplikasi WGen Note.
 
 STRICT RULE NOMINAL / AMOUNT:
-1. DILARANG KERAS MENGONVERSI MATA UANG DALAM BENTUK APA PUN! (Jangan pernah menghitung atau mengalikan kurs IDR ke JPY, JPY ke IDR, USD, dll).
+1. DILARANG KERAS MENGONVERSI MATA UANG DALAM BENTUK APA PUN!
 2. Ambil HANYA ANGKA NOMINAL MATEMATIKA ASLI yang ditulis user:
    - "30rb yen" -> amount = 30000
    - "30k idr" -> amount = 30000
    - "3 man yen" / "3万" -> amount = 30000
    - "3000 yen" -> amount = 3000
    - "1.5jt" -> amount = 1500000
-3. Apabila user menyebutkan suffix satuan (rb, k, man, 万, jt, m), hitung perkalian matematikanya secara murni tanpa mengonversi nilai mata uang.
+3. Hitung perkalian matematika suffix (rb, k, man, 万, jt, m) secara murni.
 
 STRICT RULE MATA UANG (CURRENCY DETECTION):
 Daftar mata uang yang didukung: [AED, AUD, CNY, EUR, GBP, IDR, JPY, KRW, MYR, SAR, SGD, THB, USD].
-1. Jika user menyebutkan mata uang secara eksplisit (contoh: "rupiah"/"idr"/"rp", "yen"/"jpy"/"円", "dollar"/"usd", dll), WAJIB set "currency" ke KODE KURS TERSEBUT.
-2. Jika user TIDAK menyebutkan nama mata uang (contoh: "makan 4000"), WAJIB set "currency": "${currency}" (Gunakan Mata Uang Utama Aplikasi).
+1. Jika user menyebutkan kata 'rupiah' / 'idr' / 'rp' -> set "currency": "IDR"
+2. Jika user menyebutkan kata 'yen' / 'jpy' / '円' -> set "currency": "JPY"
+3. Jika user TIDAK menyebutkan mata uang -> WAJIB set "currency": "${currency}"
 
-STRICT RULE CATATAN / NOTE:
-1. Ekstrak detail tambahan atau deskripsi spesifik dari teks input pengguna ke dalam field "note" (contoh: "makan bakmi ayam warung mang udin 30rb" -> title: "Makan dan minum", note: "Bakmi ayam warung mang udin").
-2. Jika tidak ada catatan tambahan spesifik dari pengguna, isi "note" dengan string kosong ("").
+STRICT RULE KATEGORI (CATEGORY MATCHING):
+Pilih kategori yang PALING COCOK dari daftar ini: [${categoriesText}].
+- Pakaian/Baju/Celana/Sepatu/Tas -> Pilih kategori Belanja ("Shopping" / "Belanja" / "ショッピング").
+- Makanan/Minuman/Restoran/Warung -> Pilih kategori Makan ("Food & Drinks" / "Makan dan minum" / "飲食").
+- Kendaraan/Bensin/Tiket/Transport -> Pilih kategori Transportasi ("Transportation" / "Transportasi" / "交通費").
 
 METADATA:
 - Bahasa judul ('title') dan catatan ('note'): WAJIB menggunakan bahasa ${targetLanguage}.
 - Mata Uang Utama Aplikasi: ${currency}.
-- Kategori wajib pilih PERSIS salah satu dari daftar ini: [${categoriesText}].
 
-Format Output HANYA JSON MURNI (Tanpa markdown / \`\`\`json):
+Format Output HANYA JSON MURNI:
 {
   "transactions": [
     {
-      "title": "Judul item singkat",
+      "title": "Judul item",
       "amount": 30000,
       "type": "expense",
       "category": "PILIH_PERSIS_DARI_DAFTAR_KATEGORI",
       "payment_method": "Cash",
       "currency": "KODE_CURRENCY_HASIL_DETEKSI",
-      "note": "Catatan tambahan atau keterangan detail item"
+      "note": ""
     }
   ]
 }
