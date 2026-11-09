@@ -169,28 +169,40 @@ export async function parseTransactionText(
       if (!content) continue;
 
       const parsed = cleanJsonResponse(content);
-      if (parsed && Array.isArray(parsed.transactions) && parsed.transactions.length > 0) {
-        return parsed.transactions.map((transaction: any) => {
-          // Deteksi Currency tambahan jika AI me-return currency default padahal user sebut yen/rupiah
-          let detectedCurrency = transaction.currency;
-          const lowerInput = userInput.toLowerCase();
-          if (lowerInput.includes('yen') || lowerInput.includes('jpy') || lowerInput.includes('万') || lowerInput.includes('円')) {
-            detectedCurrency = 'JPY';
-          } else if (lowerInput.includes('rupiah') || lowerInput.includes('idr') || lowerInput.includes('rp')) {
-            detectedCurrency = 'IDR';
-          }
-
-          return {
-            ...transaction,
-            amount: parseRawAmount(userInput, Number(transaction.amount) || 0),
-            // 🟢 PERBAIKAN UTAMA: Paksa ubah teks kategori AI ke Canonical Key DB (misal "Belanja" -> "shopping")
-            category: getStandardCategoryValue(transaction.category) || transaction.category,
-            currency: detectedCurrency || currency,
-            note: transaction.note || "",
-          };
-        });
+  if (parsed && Array.isArray(parsed.transactions) && parsed.transactions.length > 0) {
+    return parsed.transactions.map((transaction: any) => {
+      let detectedCurrency = transaction.currency;
+      const lowerInput = userInput.toLowerCase();
+      
+      if (lowerInput.includes('yen') || lowerInput.includes('jpy') || lowerInput.includes('万') || lowerInput.includes('円')) {
+        detectedCurrency = 'JPY';
+      } else if (lowerInput.includes('rupiah') || lowerInput.includes('idr') || lowerInput.includes('rp')) {
+        detectedCurrency = 'IDR';
       }
-    } catch (error: any) {
+
+      // 🟢 PERBAIKAN MATEN: Smart Matching Kategori
+      let matchedCategory = transaction.category;
+      
+      // Jika AI balikin "Belanja" atau "Shopping" atau input ada kata baju/kaos/dll
+      if (/(baju|celana|pakaian|sepatu|tas|kaos|kemeja|belanja|shopping)/i.test(userInput) || 
+          /(belanja|shopping)/i.test(transaction.category)) {
+        matchedCategory = finalCategories.find(c => /(belanja|shopping|服|買)/i.test(c)) || transaction.category;
+      } else if (/(makan|minum|kopi|nasi|ayam|food|drink)/i.test(userInput) || 
+                 /(makan|food)/i.test(transaction.category)) {
+        matchedCategory = finalCategories.find(c => /(makan|food|drink|飲食)/i.test(c)) || transaction.category;
+      }
+
+      return {
+        ...transaction,
+        amount: parseRawAmount(userInput, Number(transaction.amount) || 0),
+        category: matchedCategory, // Gunakan kategori yang udah pasti cocok sama list UI
+        currency: detectedCurrency || currency,
+        note: transaction.note || "",
+      };
+    });
+  }
+} 
+    catch (error: any) {
       console.warn(`⚠️ Model ${model} gagal:`, error?.message || error);
     }
   }
