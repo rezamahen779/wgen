@@ -11,7 +11,7 @@ const openrouter = new OpenAI({
     "HTTP-Referer": "http://localhost:5173",
     "X-Title": "WGen Note SANS AI",
   },
-})
+});
 
 export interface ParsedTransaction {
   title: string;
@@ -44,13 +44,13 @@ function getSystemPrompt(
   const categoriesText =
     availableCategories.length > 0
       ? availableCategories.map((c) => `"${c}"`).join(", ")
-      : `"Makan dan minum", "Food & Drinks", "Belanja", "Shopping", "Transportasi", "Gaji", "Lainnya"`;
+      : `"Makan dan minum", "Belanja", "Shopping", "Food & Drinks", "Transportasi", "Gaji", "Lainnya"`;
 
   return `
 Nama kamu adalah SANS, asisten AI pencatat keuangan otomatis untuk aplikasi WGen Note.
 
 STRICT RULE NOMINAL / AMOUNT:
-1. DILARANG KERAS MENGONVERSI MATA UANG DALAM BENTUK APA PUN!
+1. DILARANG KERAS MENGONVERSI MATA UANG DALAM BENTUK APA PUN! (Jangan pernah menghitung kurs IDR ke JPY, JPY ke IDR, USD, dll).
 2. Ambil HANYA ANGKA NOMINAL MATEMATIKA ASLI yang ditulis user:
    - "30rb yen" -> amount = 30000
    - "30k idr" -> amount = 30000
@@ -61,15 +61,15 @@ STRICT RULE NOMINAL / AMOUNT:
 
 STRICT RULE MATA UANG (CURRENCY DETECTION):
 Daftar mata uang yang didukung: [AED, AUD, CNY, EUR, GBP, IDR, JPY, KRW, MYR, SAR, SGD, THB, USD].
-1. Jika user menyebutkan kata 'rupiah' / 'idr' / 'rp' -> set "currency": "IDR"
-2. Jika user menyebutkan kata 'yen' / 'jpy' / '円' -> set "currency": "JPY"
-3. Jika user TIDAK menyebutkan mata uang -> WAJIB set "currency": "${currency}"
+1. Jika user menyebutkan kata 'rupiah', 'idr', atau 'rp' -> WAJIB set "currency": "IDR"
+2. Jika user menyebutkan kata 'yen', 'jpy', '万', atau '円' -> WAJIB set "currency": "JPY"
+3. Jika user TIDAK menyebutkan nama mata uang -> WAJIB set "currency": "${currency}" (Gunakan Mata Uang Utama Aplikasi).
 
-STRICT RULE KATEGORI (CATEGORY MATCHING):
+STRICT RULE PEMETAAN KATEGORI (CATEGORY MATCHING):
 Pilih kategori yang PALING COCOK dari daftar ini: [${categoriesText}].
-- Pakaian/Baju/Celana/Sepatu/Tas -> Pilih kategori Belanja ("Shopping" / "Belanja" / "ショッピング").
-- Makanan/Minuman/Restoran/Warung -> Pilih kategori Makan ("Food & Drinks" / "Makan dan minum" / "飲食").
-- Kendaraan/Bensin/Tiket/Transport -> Pilih kategori Transportasi ("Transportation" / "Transportasi" / "交通費").
+- Kata kunci baju, celana, pakaian, sepatu, tas -> WAJIB PILIH kategori Belanja ("Shopping" / "Belanja" / "ショッピング").
+- Kata kunci makan, minum, ayam, bakmi, kopi, nasi -> WAJIB PILIH kategori Makan ("Food & Drinks" / "Makan dan minum" / "飲食").
+- Kata kunci bensin, transport, bus, kereta -> WAJIB PILIH kategori Transportasi ("Transportation" / "Transportasi" / "交通費").
 
 METADATA:
 - Bahasa judul ('title') dan catatan ('note'): WAJIB menggunakan bahasa ${targetLanguage}.
@@ -140,8 +140,19 @@ export async function parseTransactionText(
   categories: string[] = [],
   currency: string = "JPY"
 ): Promise<ParsedTransaction[]> {
+  const activeLangCategories =
+    CATEGORIES_BY_LANG[lang as keyof typeof CATEGORIES_BY_LANG] || CATEGORIES_BY_LANG["id"];
+  const finalCategories = categories.length > 0 
+    ? categories 
+    : [
+        ...(activeLangCategories?.expenseRoutine || []),
+        ...(activeLangCategories?.expenseAsset || []),
+        ...(activeLangCategories?.incomeRoutine || []),
+        ...(activeLangCategories?.incomeAsset || []),
+      ];
+
   const freeModels = ["google/gemini-2.0-flash-exp:free", "meta-llama/llama-3.3-70b-instruct:free", "openrouter/auto"];
-  const systemPrompt = getSystemPrompt(lang, categories, currency);
+  const systemPrompt = getSystemPrompt(lang, finalCategories, currency);
 
   for (const model of freeModels) {
     try {
@@ -159,12 +170,25 @@ export async function parseTransactionText(
 
       const parsed = cleanJsonResponse(content);
       if (parsed && Array.isArray(parsed.transactions) && parsed.transactions.length > 0) {
-        return parsed.transactions.map((transaction: any) => ({
-          ...transaction,
-          amount: parseRawAmount(userInput, Number(transaction.amount) || 0),
-          currency: transaction.currency || currency,
-          note: transaction.note || "",
-        }));
+        return parsed.transactions.map((transaction: any) => {
+          // Deteksi Currency tambahan jika AI me-return currency default padahal user sebut yen/rupiah
+          let detectedCurrency = transaction.currency;
+          const lowerInput = userInput.toLowerCase();
+          if (lowerInput.includes('yen') || lowerInput.includes('jpy') || lowerInput.includes('万') || lowerInput.includes('円')) {
+            detectedCurrency = 'JPY';
+          } else if (lowerInput.includes('rupiah') || lowerInput.includes('idr') || lowerInput.includes('rp')) {
+            detectedCurrency = 'IDR';
+          }
+
+          return {
+            ...transaction,
+            amount: parseRawAmount(userInput, Number(transaction.amount) || 0),
+            // 🟢 PERBAIKAN UTAMA: Paksa ubah teks kategori AI ke Canonical Key DB (misal "Belanja" -> "shopping")
+            category: getStandardCategoryValue(transaction.category) || transaction.category,
+            currency: detectedCurrency || currency,
+            note: transaction.note || "",
+          };
+        });
       }
     } catch (error: any) {
       console.warn(`⚠️ Model ${model} gagal:`, error?.message || error);
@@ -180,8 +204,17 @@ export async function parseTransactionReceipt(
   categories: string[] = [],
   currency: string = "JPY"
 ): Promise<ParsedTransaction[]> {
+  const activeLangCategories =
+    CATEGORIES_BY_LANG[lang as keyof typeof CATEGORIES_BY_LANG] || CATEGORIES_BY_LANG.id;
+  const finalCategories = categories.length > 0 
+    ? categories 
+    : [
+        ...(activeLangCategories?.expenseRoutine || []),
+        ...(activeLangCategories?.expenseAsset || []),
+      ];
+
   const visionModels = ["google/gemini-2.0-flash-exp:free", "openrouter/auto"];
-  const systemPrompt = getSystemPrompt(lang, categories, currency);
+  const systemPrompt = getSystemPrompt(lang, finalCategories, currency);
 
   for (const model of visionModels) {
     try {
@@ -206,6 +239,7 @@ export async function parseTransactionReceipt(
       if (parsed && Array.isArray(parsed.transactions) && parsed.transactions.length > 0) {
         return parsed.transactions.map((transaction: any) => ({
           ...transaction,
+          category: getStandardCategoryValue(transaction.category) || transaction.category,
           currency: transaction.currency || currency,
           note: transaction.note || "",
         }));
