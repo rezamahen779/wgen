@@ -204,22 +204,24 @@ export async function parseTransactionText(
 
           // 2. Pencocokan Kategori Otomatis:
           // Cari kategori yang eksak dari list UI. Jika AI mengembalikan key mentah, lewatkan ke CategoryHelper.
-          const rawCat = transaction.category || "";
-          const exactMatch = finalCategories.find(
-            (c) => c.toLowerCase() === rawCat.toLowerCase()
-          );
+          const rawCat = (transaction.category || "").toLowerCase();
 
-          const matchedCategory = exactMatch || getStandardCategoryValue(rawCat) || rawCat || finalCategories[0];
+      const matchedCategory = 
+        finalCategories.find((c) => c.toLowerCase() === rawCat) ||
+        finalCategories.find((c) => c.toLowerCase() === (getStandardCategoryValue(transaction.category) || "").toLowerCase()) ||
+        finalCategories.find((c) => c.toLowerCase().includes(rawCat) || rawCat.includes(c.toLowerCase())) ||
+        finalCategories[0];
 
-          return {
-            ...transaction,
-            amount: parseRawAmount(userInput, Number(transaction.amount) || 0),
-            category: matchedCategory,
-            currency: detectedCurrency,
-            note: transaction.note || "",
-          };
-        });
-      }
+      return {
+        ...transaction,
+        amount: parseRawAmount(userInput, Number(transaction.amount) || 0),
+        category: matchedCategory, // 👈 Hasil matching otomatis tanpa if-else
+        currency: detectedCurrency,
+        note: transaction.note || "",
+      };
+    });
+  }
+  
     } catch (error: any) {
       console.warn(`⚠️ Model ${model} gagal:`, error?.message || error);
     }
