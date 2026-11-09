@@ -18,6 +18,8 @@ export interface ParsedTransaction {
   type: "expense" | "income";
   category: string;
   payment_method?: string;
+  currency?: string;
+  note?: string;
 }
 
 function getLanguageName(langCode: string): string {
@@ -47,29 +49,40 @@ function getSystemPrompt(
 Nama kamu adalah SANS, asisten AI pencatat keuangan otomatis untuk aplikasi WGen Note.
 
 STRICT RULE NOMINAL / AMOUNT:
-1. DILARANG KERAS MENGONVERSI MATA UANG DALAM BENTUK APA PUN! (Jangan pernah menghitung kurs IDR ke JPY, JPY ke IDR, USD, dll).
-2. Abaikan sebutan nama mata uang (yen, rupiah, dollar, dll). Ambil HANYA ANGKA NOMINAL MATEMATIKA ASLI yang ditulis user:
-   - "30rb yen" -> amount = 30000 (Bukan konversi, ambil angka 30rb = 30000)
+1. DILARANG KERAS MENGONVERSI MATA UANG DALAM BENTUK APA PUN! (Jangan pernah menghitung atau mengalikan kurs IDR ke JPY, JPY ke IDR, USD, dll).
+2. Ambil HANYA ANGKA NOMINAL MATEMATIKA ASLI yang ditulis user:
+   - "30rb yen" -> amount = 30000
    - "30k idr" -> amount = 30000
    - "3 man yen" / "3万" -> amount = 30000
    - "3000 yen" -> amount = 3000
    - "1.5jt" -> amount = 1500000
-3. Apabila user menyebutkan suffix satuan (rb, k, man,万, jt, m), hitung perkalian matematikanya langsung tanpa mengubah nilai ke mata uang lain.
+3. Apabila user menyebutkan suffix satuan (rb, k, man, 万, jt, m), hitung perkalian matematikanya secara murni tanpa mengonversi nilai mata uang.
+
+STRICT RULE MATA UANG (CURRENCY DETECTION):
+Daftar mata uang yang didukung: [AED, AUD, CNY, EUR, GBP, IDR, JPY, KRW, MYR, SAR, SGD, THB, USD].
+1. Jika user menyebutkan mata uang secara eksplisit (contoh: "rupiah"/"idr"/"rp", "yen"/"jpy"/"円", "dollar"/"usd", dll), WAJIB set "currency" ke KODE KURS TERSEBUT.
+2. Jika user TIDAK menyebutkan nama mata uang (contoh: "makan 4000"), WAJIB set "currency": "${currency}" (Gunakan Mata Uang Utama Aplikasi).
+
+STRICT RULE CATATAN / NOTE:
+1. Ekstrak detail tambahan atau deskripsi spesifik dari teks input pengguna ke dalam field "note" (contoh: "makan bakmi ayam warung mang udin 30rb" -> title: "Makan dan minum", note: "Bakmi ayam warung mang udin").
+2. Jika tidak ada catatan tambahan spesifik dari pengguna, isi "note" dengan string kosong ("").
 
 METADATA:
-- Bahasa judul ('title'): WAJIB menggunakan bahasa ${targetLanguage}.
-- Mata Uang Utama Aplikasi: [${currency}].
+- Bahasa judul ('title') dan catatan ('note'): WAJIB menggunakan bahasa ${targetLanguage}.
+- Mata Uang Utama Aplikasi: ${currency}.
 - Kategori wajib pilih PERSIS salah satu dari daftar ini: [${categoriesText}].
 
-Format Output HANYA JSON MURNI:
+Format Output HANYA JSON MURNI (Tanpa markdown / \`\`\`json):
 {
   "transactions": [
     {
-      "title": "Judul item",
+      "title": "Judul item singkat",
       "amount": 30000,
       "type": "expense",
       "category": "PILIH_PERSIS_DARI_DAFTAR_KATEGORI",
-      "payment_method": "Cash"
+      "payment_method": "Cash",
+      "currency": "KODE_CURRENCY_HASIL_DETEKSI",
+      "note": "Catatan tambahan atau keterangan detail item"
     }
   ]
 }
@@ -146,6 +159,8 @@ export async function parseTransactionText(
         return parsed.transactions.map((transaction: any) => ({
           ...transaction,
           amount: parseRawAmount(userInput, Number(transaction.amount) || 0),
+          currency: transaction.currency || currency,
+          note: transaction.note || "",
         }));
       }
     } catch (error: any) {
@@ -186,7 +201,11 @@ export async function parseTransactionReceipt(
 
       const parsed = cleanJsonResponse(content);
       if (parsed && Array.isArray(parsed.transactions) && parsed.transactions.length > 0) {
-        return parsed.transactions;
+        return parsed.transactions.map((transaction: any) => ({
+          ...transaction,
+          currency: transaction.currency || currency,
+          note: transaction.note || "",
+        }));
       }
     } catch (error: any) {
       console.warn(`⚠️ Vision model ${model} gagal:`, error?.message || error);
