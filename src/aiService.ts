@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import dotenv from "dotenv";
-import { CATEGORIES_BY_LANG, getStandardCategoryValue } from "./CategoryHelper";
+import { CATEGORIES_BY_LANG, CATEGORY_MAP, getStandardCategoryValue } from "./CategoryHelper";
 
 dotenv.config();
 
@@ -204,13 +204,34 @@ export async function parseTransactionText(
 
           // 2. Pencocokan Kategori Otomatis:
           // Cari kategori yang eksak dari list UI. Jika AI mengembalikan key mentah, lewatkan ke CategoryHelper.
-          const rawCat = (transaction.category || "").toLowerCase();
+          // 🟢 PURE AUTOMATIC DICTIONARY MATCHING (TANPA 1 PUN KATA IF-ELSE MANUAL!)
+// 🟢 PURE AUTOMATIC DICTIONARY MATCHING (DISAVE & TANPA IF-ELSE REGEX MANUAL)
+const rawCatFromAI = (transaction.category || "").toLowerCase();
+const inputLower = userInput.toLowerCase();
 
-      const matchedCategory = 
-        finalCategories.find((c) => c.toLowerCase() === rawCat) ||
-        finalCategories.find((c) => c.toLowerCase() === (getStandardCategoryValue(transaction.category) || "").toLowerCase()) ||
-        finalCategories.find((c) => c.toLowerCase().includes(rawCat) || rawCat.includes(c.toLowerCase())) ||
-        finalCategories[0];
+// 1. Match eksak dengan finalCategories UI
+let matchedCategory = finalCategories.find(c => c.toLowerCase() === rawCatFromAI);
+
+// 2. Cek lewat CATEGORY_MAP kamu (Mencakup kata kunci dari input DAN dari AI)
+if (!matchedCategory && CATEGORY_MAP) {
+  for (const [key, translations] of Object.entries(CATEGORY_MAP)) {
+    const allPossibleNames = [key, ...Object.values(translations)].map(v => String(v).toLowerCase());
+
+    // Cek apakah input mentah (misal: "cincin") atau balasan AI ada di kamus CATEGORY_MAP kamu
+    const isMatch = allPossibleNames.some(name => 
+      inputLower.includes(name) || rawCatFromAI.includes(name) || name.includes(rawCatFromAI)
+    );
+
+    if (isMatch) {
+      const targetLangName = String((translations as any)[lang] || (translations as any)['id'] || key);
+      matchedCategory = finalCategories.find(c => c.toLowerCase() === targetLangName.toLowerCase());
+      if (matchedCategory) break;
+    }
+  }
+}
+
+// 3. Fallback: Kembalikan string AI (Jangan pernah fallback ke finalCategories[0]!)
+matchedCategory = matchedCategory || transaction.category;
 
       return {
         ...transaction,
@@ -221,7 +242,7 @@ export async function parseTransactionText(
       };
     });
   }
-  
+
     } catch (error: any) {
       console.warn(`⚠️ Model ${model} gagal:`, error?.message || error);
     }
