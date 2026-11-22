@@ -1519,7 +1519,14 @@ export default function DebtManager({
  const [pendingInstallmentReports, setPendingInstallmentReports] = useState([]);
   const [showTransferNotifModal, setShowTransferNotifModal] = useState(false);
   const [verifyingReportId, setVerifyingReportId] = useState(null);
+  const [toastInfo, setToastInfo] = useState(null); // { message: string, type: 'success' | 'error' | 'info' }
 
+  const showToast = (message, type = 'success') => {
+    setToastInfo({ message, type });
+    setTimeout(() => {
+      setToastInfo((prev) => (prev && prev.message === message ? null : prev));
+    }, 3500);
+  };
   const loadQrApplicationsAndReports = async () => {
     const uid = auth?.currentUser?.uid || localStorage.getItem('wgen_last_uid');
     if (!uid) return;
@@ -1527,8 +1534,9 @@ export default function DebtManager({
       const allRows = await getIncomingApplications(uid, 'all');
 
       // 1. Pengajuan baru yang belum di-ACC
-      setIncomingApps(allRows.filter((row) => row.status === 'pending'));
-
+      setIncomingApps(
+      allRows.filter((row) => row.status === 'pending' || row.status === 'counter_offer')
+    );
       // 2. Laporan transfer cicilan masuk dari peminjam (status 'pending_verification')
       const reports = [];
       for (const app of allRows) {
@@ -1569,27 +1577,111 @@ export default function DebtManager({
   const handleConfirmTransferFromBorrower = async (report) => {
     setVerifyingReportId(report.id);
     try {
+      const paidNominal = Number(report.amount) || 0;
+      const instNumber = Number(report.installmentNumber) || 1;
+
+      // 1. Verifikasi di tiket QR (tetap pakai fungsi service aslimu)
       await recordVerifiedInstallmentPayment({
         applicationId: report.applicationId,
-        amountReceived: Number(report.amount) || 0,
-        installmentNumber: Number(report.installmentNumber) || 1,
+        amountReceived: paidNominal,
+        installmentNumber: instNumber,
         note: `Diverifikasi via Notifikasi Transfer (${report.transferMethod || 'Transfer'})`
       });
 
-      // Refresh daftar notifikasi supaya laporan ini langsung hilang dari antrean pending
+      // 2. Cari kartu piutang utama yang cocok di state debts
+      const normalizedReportPhone = String(report.borrowerPhone || report.borrower_phone || '').replace(/\D/g, '');
+      const normalizedReportName = String(report.borrowerName || report.borrower_name || '').trim().toLowerCase();
+
+      const targetDebt =
+        debts.find(
+          (d) =>
+            d.type === 'receivable' &&
+            String(d.qrApplicationId || '') === String(report.applicationId)
+        ) ||
+        debts.find((d) => {
+          if (d.type !== 'receivable' || d.statusKey === 'paid') return false;
+          const debtPhone = String(d.borrowerPhone || '').replace(/\D/g, '');
+          const debtName = String(d.name || '').trim().toLowerCase();
+          const phoneMatch =
+            normalizedReportPhone &&
+            debtPhone &&
+            (debtPhone.endsWith(normalizedReportPhone.slice(-9)) ||
+              normalizedReportPhone.endsWith(debtPhone.slice(-9)));
+          return phoneMatch || (normalizedReportName && debtName === normalizedReportName);
+        });
+
+      // 3. Jika kartu piutang ditemukan, update paymentHistory, totalPaidAmount & status
+      if (targetDebt && paidNominal > 0) {
+        const nowIso = new Date().toISOString();
+        const todayStr = formatLocalDateStr(new Date());
+        const prevPaid = Number(targetDebt.totalPaidAmount || 0);
+        const totalBill = Number(targetDebt.totalAmount || targetDebt.amount || 0);
+        const nextPaid = prevPaid + paidNominal;
+        const isNowPaid = totalBill > 0 && nextPaid >= totalBill;
+
+        const prevInst = Number(targetDebt.paidInstallments || 0);
+        const maxInst = Number(targetDebt.installmentCount || 1);
+        const nextInst = targetDebt.isInstallment
+          ? isNowPaid
+            ? maxInst
+            : Math.min(maxInst, Math.max(prevInst + 1, instNumber))
+          : isNowPaid
+          ? 1
+          : 0;
+
+        const newPaymentEntry = {
+          id: `qr-pay-${Date.now()}`,
+          date: todayStr,
+          amount: paidNominal,
+          method: report.transferMethod || 'Transfer QR',
+          note: `Angsuran ke-${instNumber} (${report.borrowerName || targetDebt.name})`,
+          proofPhoto: report.proofImage || report.proofPhoto || report.last_payment_proof || ''
+        };
+
+        const updatedHistory = [
+          ...(Array.isArray(targetDebt.paymentHistory) ? targetDebt.paymentHistory : []),
+          newPaymentEntry
+        ];
+
+        const updatedDebt = {
+          ...targetDebt,
+          qrApplicationId: targetDebt.qrApplicationId || String(report.applicationId),
+          totalPaidAmount: nextPaid,
+          paidInstallments: nextInst,
+          statusKey: isNowPaid ? 'paid' : targetDebt.statusKey,
+          paymentHistory: updatedHistory,
+          updatedAt: nowIso
+        };
+
+        const nextDebts = debts.map((item) => (String(item.id) === String(targetDebt.id) ? updatedDebt : item));
+        setDebts(nextDebts);
+
+        try {
+          localStorage.setItem('wgen_debts_data', JSON.stringify(nextDebts));
+        } catch (storageErr) {
+          console.warn('Storage quota warning:', storageErr);
+        }
+
+        if (typeof syncSingleDebtToTurso === 'function') {
+          await syncSingleDebtToTurso(updatedDebt);
+        }
+      }
+
+      // 4. Refresh daftar notifikasi supaya laporan ini langsung hilang dari antrean pending
       await loadQrApplicationsAndReports();
-      alert(
-        `Berhasil! Pembayaran angsuran ke-${report.installmentNumber} dari ${report.borrowerName} sebesar ${report.currency} ${Number(
-          report.amount
-        ).toLocaleString('id-ID')} sudah diverifikasi. Status di halaman tiket peminjam otomatis berubah HIJAU!`
+      showToast(
+        targetDebt
+          ? `Mutasi angsuran ke-${instNumber} (${report.currency} ${paidNominal.toLocaleString('id-ID')}) terverifikasi & masuk ke kartu "${targetDebt.name}"!`
+          : `Mutasi angsuran ke-${instNumber} (${report.currency} ${paidNominal.toLocaleString('id-ID')}) terverifikasi!`,
+        'success'
       );
     } catch (err) {
-      alert(err.message || 'Gagal memverifikasi pembayaran masuk.');
+      showToast(err.message || 'Gagal memverifikasi pembayaran masuk.', 'error');
     } finally {
       setVerifyingReportId(null);
     }
   };
-
+  
   const handleOpenQrModal = async () => {
     const uid = auth?.currentUser?.uid || localStorage.getItem('wgen_last_uid');
     if (!uid) return;
@@ -1619,21 +1711,62 @@ export default function DebtManager({
     link.click();
   };
 
-  const handleApproveApplication = (app) => {
+ const handleApproveApplication = (app) => {
     const todayStr = formatLocalDateStr(new Date());
     const months = Number(app.tenor_months) || 1;
     const dueObj = addMonthsSafely(todayStr, months);
     const dueStr = dueObj ? formatLocalDateStr(dueObj) : '';
 
+    // 1. Ambil persentase imbalan jasa dari pengajuan/lelang QR (bukan 0)
+    const appliedReward =
+      app.reward_percent !== undefined && app.reward_percent !== null && app.reward_percent !== ''
+        ? Number(app.reward_percent)
+        : Number(app.has_collateral) === 1
+        ? 12.5
+        : 20;
+
+    // 2. Deteksi otomatis apakah termasuk Pinjaman Mikro (tanpa jaminan & <= 500rb)
+    const isMicroApp =
+      Number(app.has_collateral) !== 1 &&
+      (app.currency || 'IDR') === 'IDR' &&
+      Number(app.requested_amount || 0) <= 500000;
+
+    // 3. Ambil rekening/e-wallet default pemberi pinjaman (dari pengaturan QR atau riwayat terakhir)
+    const savedAccountInfo =
+      qrLinkData?.payment_account_info ||
+      localStorage.getItem('wgen_default_payment_account') ||
+      debts.find((d) => d.paymentAccountInfo)?.paymentAccountInfo ||
+      '';
+
+    const savedMethodKey =
+      qrLinkData?.payment_method_key ||
+      localStorage.getItem('wgen_default_payment_method') ||
+      'transfer';
+
     setCurrentDebtId(null);
     setName(app.borrower_name || '');
-    setLenderName(auth?.currentUser?.displayName || localStorage.getItem('wgen_username') || '');
+    setLenderName(
+      qrLinkData?.lender_name ||
+        auth?.currentUser?.displayName ||
+        localStorage.getItem('wgen_username') ||
+        ''
+    );
     setDebtorIdNo(app.debtor_id || '');
     setDebtorAddress(app.debtor_address || '');
     setBorrowerPhone(app.borrower_phone || '');
     setEmergencyPhone(app.emergency_phone || '');
     setDebtCurrency(app.currency || managerCurrency || 'IDR');
     setAmount(String(app.requested_amount || ''));
+
+    // Otomatis isi Imbalan Jasa & Mode Mikro
+    setBonusPercent(String(appliedReward));
+    setBonusType('bonus');
+    setLateFeeMode(isMicroApp ? 'micro' : 'auto');
+
+    // Otomatis isi Metode & Rekening Tujuan Pembayaran
+    setPaymentMethodKey(savedMethodKey);
+    setPaymentAccountInfo(savedAccountInfo);
+
     setStartDate(todayStr);
     setDueDate(dueStr);
     setIsInstallment(Number(app.is_installment) === 1);
@@ -1645,6 +1778,7 @@ export default function DebtManager({
     setPhotoSelfieDebtor(app.photo_selfie || '');
     setPhotoSelfieIdDebtor(app.photo_selfie_id || '');
     setPhotoCollateral1(app.photo_collateral_1 || '');
+    setPhotoCollateral2(app.photo_collateral_2 || '');
     setApprovedApplicationId(app.id);
 
     setShowInboxModal(false);
@@ -1811,7 +1945,7 @@ export default function DebtManager({
     const updated = { ...waTemplates, [type]: waMessage };
     setWaTemplates(updated);
     localStorage.setItem('wgen_wa_loan_templates', JSON.stringify(updated));
-    alert('Template pesan WhatsApp berhasil disimpan sebagai default!');
+    showToast('Template pesan WhatsApp berhasil disimpan sebagai default!', 'success');
   };
 
   const addMonthsSafely = (dateStr, monthsToAdd) => {
@@ -2169,7 +2303,7 @@ export default function DebtManager({
   };
 
   const ensureTursoDebtsSchema = async () => {
-    const alterStatements = [
+   const alterStatements = [
       `ALTER TABLE debts ADD COLUMN lender_name TEXT DEFAULT ''`,
       `ALTER TABLE debts ADD COLUMN debtor_id_no TEXT DEFAULT ''`,
       `ALTER TABLE debts ADD COLUMN creditor_id_no TEXT DEFAULT ''`,
@@ -2185,7 +2319,15 @@ export default function DebtManager({
       `ALTER TABLE debts ADD COLUMN creditor_signature TEXT DEFAULT ''`,
       `ALTER TABLE debts ADD COLUMN debtor_fingerprint TEXT DEFAULT ''`,
       `ALTER TABLE debts ADD COLUMN debtor_signature TEXT DEFAULT ''`,
-      `ALTER TABLE debts ADD COLUMN updated_at TEXT DEFAULT ''`
+      `ALTER TABLE debts ADD COLUMN updated_at TEXT DEFAULT ''`,
+      `ALTER TABLE debts ADD COLUMN photo_id_debtor TEXT DEFAULT ''`,
+      `ALTER TABLE debts ADD COLUMN photo_selfie_debtor TEXT DEFAULT ''`,
+      `ALTER TABLE debts ADD COLUMN photo_selfie_id_debtor TEXT DEFAULT ''`,
+      `ALTER TABLE debts ADD COLUMN photo_collateral_1 TEXT DEFAULT ''`,
+      `ALTER TABLE debts ADD COLUMN photo_collateral_2 TEXT DEFAULT ''`,
+      `ALTER TABLE debts ADD COLUMN photo_etc1 TEXT DEFAULT ''`,
+      `ALTER TABLE debts ADD COLUMN photo_etc2 TEXT DEFAULT ''`,
+      `ALTER TABLE debts ADD COLUMN qr_application_id TEXT DEFAULT ''`
     ];
     for (const stmt of alterStatements) {
       try {
@@ -2491,9 +2633,13 @@ export default function DebtManager({
     const cleanedAccountInfo = paymentMethodKey === 'cash' ? '' : paymentAccountInfo;
     const selectedCategory = category || categories[0] || 'Pribadi';
     const nowIso = new Date().toISOString();
-
+      if (cleanedAccountInfo) {
+        localStorage.setItem('wgen_default_payment_account', cleanedAccountInfo);
+        localStorage.setItem('wgen_default_payment_method', paymentMethodKey);
+      }
     const debtData = {
       id: newDebtId,
+      qrApplicationId: approvedApplicationId || existingDebt?.qrApplicationId || '',
       name,
       lenderName,
       debtorIdNo,
@@ -4839,7 +4985,22 @@ const getDynamicTierTexts = (targetCurr) => {
                     className={`w-full px-3 py-1.5 rounded-lg text-[11px] text-center border ${inputBg}`}
                   />
                 </div>
-
+                <div className="w-full text-left space-y-1 pt-1">
+                    <label className="text-[11px] font-semibold text-slate-400">
+                      Rekening / E-Wallet Tujuan Pembayaran (Otomatis Terisi Saat ACC):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: BCA 1234567890 a.n Reza / DANA 0812xxx"
+                      defaultValue={localStorage.getItem('wgen_default_payment_account') || ''}
+                      onBlur={(e) => {
+                        const val = e.target.value.trim();
+                        localStorage.setItem('wgen_default_payment_account', val);
+                        setQrLinkData((prev) => (prev ? { ...prev, payment_account_info: val } : prev));
+                      }}
+                      className={`w-full px-3 py-1.5 rounded-lg text-xs border ${inputBg}`}
+                    />
+                  </div>
                 <div className="grid grid-cols-2 gap-2.5 text-xs">
                   <button
                     type="button"
@@ -4929,6 +5090,19 @@ const getDynamicTierTexts = (targetCurr) => {
                           </span>
                         )}
                       </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm">{app.borrower_name}</span>
+                        {app.status === 'counter_offer' && (
+                          <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-semibold">
+                            Lelang Jasa • Tawaran Terkini: {app.reward_percent || 0}%
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-mono font-bold text-emerald-400 text-sm">
+                        {app.currency} {Number(app.requested_amount).toLocaleString()}
+                      </span>
+                    </div>
                       <span className="font-mono font-bold text-emerald-400 text-sm">
                         {app.currency} {Number(app.requested_amount).toLocaleString()}
                       </span>
@@ -6089,6 +6263,27 @@ const getDynamicTierTexts = (targetCurr) => {
                 {t.close}
               </button>
             </div>
+          </div>
+        </div>
+        
+      )}{/* TOAST NOTIFICATION (Pengganti alert() native agar mulus di Android/Capacitor) */}
+      {toastInfo && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[1200] max-w-md w-[92%] animate-fade-in">
+          <div
+            className={`flex items-center justify-between gap-3 px-4 py-3 rounded-xl shadow-2xl border text-xs font-semibold backdrop-blur-md ${
+              toastInfo.type === 'error'
+                ? 'bg-rose-950/95 border-rose-500/60 text-rose-100'
+                : 'bg-emerald-950/95 border-emerald-500/60 text-emerald-100'
+            }`}
+          >
+            <span className="leading-relaxed">{toastInfo.message}</span>
+            <button
+              type="button"
+              onClick={() => setToastInfo(null)}
+              className="text-slate-300 hover:text-white shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}
