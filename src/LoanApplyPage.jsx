@@ -427,6 +427,35 @@ function detectTicketContractType(ticketData) {
   return 'standard_unsecured';
 }
 
+// Batas maksimal lelang imbalan jasa per kontrak: Kontrak 1 & 3 = 12.5%, Kontrak 2 = 20%
+function getMaxAuctionRewardPercent(contractType) {
+  return contractType === 'standard_unsecured' ? 20 : 12.5;
+}
+
+// Ekstrak rekening / e-wallet tujuan dari data tiket atau QR link kreditur
+function extractDestinationAccount(ticketData, qrInfo) {
+  const candidates = [
+    ticketData?.payment_destination,
+    ticketData?.destination_account,
+    ticketData?.bank_destination,
+    ticketData?.qr_payment_destination,
+    ticketData?.payment_account,
+    ticketData?.rekening_tujuan,
+    qrInfo?.payment_destination,
+    qrInfo?.destination_account,
+    qrInfo?.bank_destination,
+    qrInfo?.payment_account,
+    qrInfo?.rekening_tujuan
+  ];
+
+  for (const val of candidates) {
+    if (typeof val === 'string' && val.trim().length > 0) {
+      return val.trim();
+    }
+  }
+  return '';
+}
+
 // Ekstrak nominal pokok lelang dari kreditur (kolom counter_principal_amount atau tag [LELANG POKOK: ...])
 function extractOfferedPrincipal(ticketData) {
   if (!ticketData) return 0;
@@ -480,7 +509,7 @@ export default function LoanApplyPage() {
   const [paymentReport, setPaymentReport] = useState({
     installmentNumber: 1,
     amount: '',
-    transferMethod: 'Transfer Bank / E-Wallet',
+    transferMethod: '',
     notes: '',
     proofImage: ''
   });
@@ -569,17 +598,26 @@ export default function LoanApplyPage() {
         setTicketData(null);
       } else {
         setTicketData(app);
-        setNewRewardPercent(String(app.reward_percent || '12.5'));
+        const appContractType = detectTicketContractType(app);
+        const maxReward = getMaxAuctionRewardPercent(appContractType);
+        const initialReward = Math.min(maxReward, Number(app.reward_percent ?? maxReward));
+        setNewRewardPercent(String(initialReward));
         setNewRequestedAmount(String(app.requested_amount || ''));
         setUpgradeCollateralDesc(app.collateral_desc || '');
 
+        const lockedDest = extractDestinationAccount(app, qrInfo);
         const prog = extractInstallmentProgress(app);
         if (prog) {
+          const nextTerm = Math.min(prog.installmentCount, prog.confirmedTermCount + 1);
           setPaymentReport((prev) => ({
             ...prev,
-            installmentNumber: Math.min(prog.installmentCount, prog.confirmedTermCount + 1),
-            amount: String(Math.round(prog.perTermAmount))
+            installmentNumber: nextTerm,
+            amount: String(Math.round(prog.perTermAmount)),
+            transferMethod: lockedDest || prev.transferMethod || ''
           }));
+          if (prog.confirmedTermCount >= Number(paymentReport.installmentNumber || 1)) {
+            setPaymentReportSuccess('');
+          }
         }
       }
     } catch (err) {
@@ -613,6 +651,13 @@ export default function LoanApplyPage() {
           setTokenError('Tautan pengajuan ini sedang dinonaktifkan oleh pemberi pinjaman.');
         } else {
           setQrInfo(data);
+          const lockedDest = extractDestinationAccount(null, data);
+          if (lockedDest) {
+            setPaymentReport((prev) => ({
+              ...prev,
+              transferMethod: lockedDest
+            }));
+          }
           setForm((prev) => ({
             ...prev,
             currency: data.default_currency || 'IDR',
@@ -670,6 +715,9 @@ export default function LoanApplyPage() {
     e.preventDefault();
     if (!ticketData?.id) return;
 
+    const lockedDest = extractDestinationAccount(ticketData, qrInfo);
+    const finalTransferMethod = lockedDest || paymentReport.transferMethod.trim();
+
     setSubmittingPaymentReport(true);
     setTicketError('');
     setPaymentReportSuccess('');
@@ -677,7 +725,7 @@ export default function LoanApplyPage() {
       await submitInstallmentPaymentReport(ticketData.id, {
         installmentNumber: Number(paymentReport.installmentNumber) || 1,
         amount: Number(paymentReport.amount) || 0,
-        transferMethod: paymentReport.transferMethod,
+        transferMethod: finalTransferMethod,
         notes: paymentReport.notes,
         proofImage: paymentReport.proofImage
       });
@@ -863,22 +911,22 @@ export default function LoanApplyPage() {
     if (!ticketData?.id) return;
 
     const ticketCurrency = (ticketData.currency || 'IDR').toUpperCase();
-    const currentRewardPct = Number(
-      ticketData.reward_percent ||
-        (detectTicketContractType(ticketData) === 'standard_unsecured' ? 20 : 12.5)
-    );
     const ticketContractType = detectTicketContractType(ticketData);
+    const maxAllowedPct = getMaxAuctionRewardPercent(ticketContractType);
+    const currentRewardPct = Math.min(
+      maxAllowedPct,
+      Number(ticketData.reward_percent ?? maxAllowedPct)
+    );
 
     setTicketError('');
 
     if (auctionMode === 'reward') {
       const pct = Number(newRewardPercent);
-      const maxAllowedPct = ticketContractType === 'standard_unsecured' ? 20 : 100;
       if (isNaN(pct) || pct < 0 || pct > maxAllowedPct) {
         setTicketError(
           ticketContractType === 'standard_unsecured'
             ? 'Untuk Kontrak 2, penawaran imbalan jasa maksimal adalah 20%.'
-            : 'Masukkan persentase imbalan jasa yang valid (0% – 100%).'
+            : 'Untuk Kontrak 1 dan Kontrak 3, batas maksimal lelang imbalan jasa adalah 12,5%.'
         );
         return;
       }
@@ -1161,6 +1209,7 @@ export default function LoanApplyPage() {
   if (trackingMode || (!tokenParam && !submittedResult)) {
     const status = ticketData?.status || '';
     const ticketContractType = detectTicketContractType(ticketData);
+    const maxAuctionReward = getMaxAuctionRewardPercent(ticketContractType);
     const ticketCurrency = (ticketData?.currency || 'IDR').toUpperCase();
     const ticketPrincipal = Number(ticketData?.requested_amount || 0);
     const activeTicketTenor = Number(
@@ -1175,6 +1224,20 @@ export default function LoanApplyPage() {
       status === 'counter_offer' || status === 'rejected' || status === 'pending';
 
     const progress = extractInstallmentProgress(ticketData);
+    const creditorDestinationAccount = extractDestinationAccount(ticketData, qrInfo);
+    const isDestinationLocked = creditorDestinationAccount.length > 0;
+
+    // Sembunyikan banner biru jika termin yang dilaporkan sudah terverifikasi masuk
+    const reportedTermNum = Number(paymentReport.installmentNumber || 1);
+    const isReportedTermVerified =
+      progress &&
+      (reportedTermNum <= progress.confirmedTermCount ||
+        progress.rawHistory?.some(
+          (item) =>
+            Number(item.installmentNumber) === reportedTermNum &&
+            (item.status === 'verified' || item.status === 'paid' || item.verified)
+        ));
+    const showPaymentReportBanner = Boolean(paymentReportSuccess) && !isReportedTermVerified;
 
     // Data Penawaran Pokok Kreditur (Oke / Tolak / Minta Tambah maks 5x)
     const creditorOfferedPrincipal = extractOfferedPrincipal(ticketData);
@@ -1188,8 +1251,8 @@ export default function LoanApplyPage() {
     const showCreditorTenorOffer = status === 'tenor_offer' && approvedTenorOffer > 0;
 
     return (
-      <div className="min-h-screen bg-[#071510] text-emerald-50 py-8 px-4">
-        <div className="max-w-lg mx-auto bg-[#0c2119] border border-emerald-800/80 rounded-2xl p-6 space-y-5">
+      <div className="min-h-screen bg-[#071510] text-emerald-50 py-6 px-3 sm:px-4">
+        <div className="max-w-lg mx-auto bg-[#0c2119] border border-emerald-800/80 rounded-2xl p-4 sm:p-6 space-y-5">
           <div className="border-b border-emerald-800/70 pb-3 flex items-center justify-between gap-2">
             <div>
               <h1 className="text-lg font-bold text-white">Cek Status Pengajuan & Angsuran</h1>
@@ -1201,7 +1264,7 @@ export default function LoanApplyPage() {
               <button
                 type="button"
                 onClick={() => setTrackingMode(false)}
-                className="text-[11px] px-2.5 py-1 rounded bg-[#071510] border border-emerald-700 text-emerald-300"
+                className="shrink-0 text-[11px] px-2.5 py-1 rounded bg-[#071510] border border-emerald-700 text-emerald-300"
               >
                 Kembali ke Form
               </button>
@@ -1220,12 +1283,12 @@ export default function LoanApplyPage() {
               value={ticketInput}
               onChange={(e) => setTicketInput(e.target.value)}
               placeholder="Contoh: APP-1795250192"
-              className="flex-1 px-3 py-2 rounded-lg bg-[#071510] border border-emerald-800 text-sm text-white font-mono focus:outline-none focus:border-emerald-500"
+              className="min-w-0 flex-1 px-3 py-2 rounded-lg bg-[#071510] border border-emerald-800 text-sm text-white font-mono focus:outline-none focus:border-emerald-500"
             />
             <button
               type="submit"
               disabled={loadingTicket}
-              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold"
+              className="shrink-0 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold"
             >
               {loadingTicket ? 'Cek...' : 'Cek Status'}
             </button>
@@ -1243,15 +1306,15 @@ export default function LoanApplyPage() {
             </div>
           )}
 
-          {paymentReportSuccess && (
+          {showPaymentReportBanner && (
             <div className="p-3 rounded-lg bg-sky-950/80 border border-sky-500 text-xs text-sky-200 leading-relaxed">
               {paymentReportSuccess}
             </div>
           )}
 
           {ticketData && (
-            <div className="bg-[#071510] border border-emerald-800/80 rounded-xl p-4 space-y-4 text-xs">
-              <div className="flex items-center justify-between border-b border-emerald-800/60 pb-3">
+            <div className="bg-[#071510] border border-emerald-800/80 rounded-xl p-3.5 sm:p-4 space-y-4 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-800/60 pb-3">
                 <div>
                   <div className="text-emerald-400 text-[11px]">Pemohon</div>
                   <div className="font-bold text-white text-sm">{ticketData.borrower_name}</div>
@@ -1283,7 +1346,7 @@ export default function LoanApplyPage() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 text-emerald-100/85">
+              <div className="grid grid-cols-2 gap-2.5 text-emerald-100/85">
                 <div>
                   <span className="text-emerald-400/80 block">Pokok Pinjaman:</span>
                   <span className="font-semibold text-white">
@@ -1320,11 +1383,11 @@ export default function LoanApplyPage() {
               {/* FEEDBACK STATUS ANGSURAN & KONFIRMASI TRANSFER (JIKA SUDAH ACC) */}
               {status === 'approved' && progress && (
                 <div className="p-3.5 rounded-xl bg-[#0c2119] border border-emerald-700/80 space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
                     <span className="font-bold text-emerald-300">
                       Status Pembayaran & Verifikasi Angsuran
                     </span>
-                    <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-900/80 text-emerald-200">
+                    <span className="w-fit text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-900/80 border border-emerald-700/70 text-emerald-200">
                       {progress.confirmedTermCount} / {progress.installmentCount} Termin ACC
                     </span>
                   </div>
@@ -1337,9 +1400,9 @@ export default function LoanApplyPage() {
                         style={{ width: `${progress.progressPercent}%` }}
                       />
                     </div>
-                    <div className="flex justify-between text-[11px] text-emerald-200/80">
+                    <div className="flex flex-wrap justify-between gap-1 text-[11px] text-emerald-200/80">
                       <span>Terverifikasi Masuk: {progress.progressPercent}%</span>
-                      <span>
+                      <span className="font-mono">
                         {formatCurrencyAmount(progress.confirmedPaidAmount, ticketData.currency)} /{' '}
                         {formatCurrencyAmount(progress.totalDue, ticketData.currency)}
                       </span>
@@ -1370,36 +1433,38 @@ export default function LoanApplyPage() {
                     {Array.from({ length: progress.installmentCount }).map((_, idx) => {
                       const termNo = idx + 1;
                       const isVerified = termNo <= progress.confirmedTermCount;
-                      const pendingReport = progress.rawHistory.find(
-                        (r) =>
-                          Number(r.installmentNumber) === termNo &&
-                          r.status === 'pending_verification'
-                      );
+                      const pendingReport =
+                        !isVerified &&
+                        progress.rawHistory.find(
+                          (r) =>
+                            Number(r.installmentNumber) === termNo &&
+                            r.status === 'pending_verification'
+                        );
 
                       return (
                         <div
                           key={termNo}
-                          className="flex items-center justify-between p-2 rounded-lg bg-[#071510] border border-emerald-800/60 text-[11px]"
+                          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 p-2.5 rounded-lg bg-[#071510] border border-emerald-800/60 text-[11px]"
                         >
-                          <div>
+                          <div className="leading-snug">
                             <span className="font-semibold text-white">
                               {progress.isInstallment ? `Angsuran ke-${termNo}` : 'Pelunasan Penuh'}
                             </span>
-                            <span className="text-emerald-300/80 ml-2">
+                            <span className="text-emerald-300/80 ml-1.5">
                               ({formatCurrencyAmount(progress.perTermAmount, ticketData.currency)})
                             </span>
                           </div>
 
                           {isVerified ? (
-                            <span className="px-2 py-0.5 rounded bg-emerald-900/70 border border-emerald-600 text-emerald-300 font-semibold">
+                            <span className="w-fit px-2 py-0.5 rounded bg-emerald-900/70 border border-emerald-600 text-emerald-300 font-semibold text-[10px]">
                               ✓ Masuk & Dikonfirmasi Kreditur
                             </span>
                           ) : pendingReport ? (
-                            <span className="px-2 py-0.5 rounded bg-sky-950 border border-sky-600 text-sky-300 font-semibold">
+                            <span className="w-fit px-2 py-0.5 rounded bg-sky-950 border border-sky-600 text-sky-300 font-semibold text-[10px]">
                               ⏳ Sudah Transfer (Menunggu Cek Mutasi)
                             </span>
                           ) : (
-                            <span className="px-2 py-0.5 rounded bg-amber-950/60 border border-amber-700/70 text-amber-300">
+                            <span className="w-fit px-2 py-0.5 rounded bg-amber-950/60 border border-amber-700/70 text-amber-300 text-[10px]">
                               Belum Dibayar
                             </span>
                           )}
@@ -1414,11 +1479,11 @@ export default function LoanApplyPage() {
 
                   {progress.remainingAmount > 0 && (
                     <div className="space-y-2.5 pt-1">
-                      <div className="flex flex-wrap gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <button
                           type="button"
                           onClick={() => setShowPaymentReportForm((prev) => !prev)}
-                          className="flex-1 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-[11px]"
+                          className="w-full py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-[11px]"
                         >
                           {showPaymentReportForm ? 'Tutup Form Lapor' : 'Lapor Sudah Transfer Cicilan'}
                         </button>
@@ -1434,11 +1499,15 @@ export default function LoanApplyPage() {
                             } sebesar ${formatCurrencyAmount(
                               progress.perTermAmount,
                               ticketData.currency
-                            )}. Mohon dicek mutasinya ya.`
+                            )}${
+                              creditorDestinationAccount
+                                ? ` ke rekening tujuan (${creditorDestinationAccount})`
+                                : ''
+                            }. Mohon dicek mutasinya ya.`
                           )}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="py-2 px-3 rounded-lg bg-[#071510] border border-emerald-600 hover:bg-emerald-900/40 text-emerald-300 font-semibold text-[11px]"
+                          className="w-full py-2 px-3 rounded-lg bg-[#071510] border border-emerald-600 hover:bg-emerald-900/40 text-emerald-300 font-semibold text-[11px] text-center"
                         >
                           Kirim Bukti via WA
                         </a>
@@ -1490,29 +1559,46 @@ export default function LoanApplyPage() {
                           <div>
                             <label className="block text-emerald-200/80 mb-1">
                               Bank / E-Wallet Tujuan & Nama Pengirim
+                              {isDestinationLocked && (
+                                <span className="ml-1.5 text-[10px] text-emerald-400 font-semibold">
+                                  (Otomatis & Terkunci dari Kreditur)
+                                </span>
+                              )}
                             </label>
                             <input
                               type="text"
                               required
-                              value={paymentReport.transferMethod}
-                              onChange={(e) =>
-                                setPaymentReport({
-                                  ...paymentReport,
-                                  transferMethod: e.target.value
-                                })
+                              readOnly={isDestinationLocked}
+                              disabled={isDestinationLocked}
+                              value={
+                                isDestinationLocked
+                                  ? creditorDestinationAccount
+                                  : paymentReport.transferMethod
                               }
+                              onChange={(e) => {
+                                if (!isDestinationLocked) {
+                                  setPaymentReport({
+                                    ...paymentReport,
+                                    transferMethod: e.target.value
+                                  });
+                                }
+                              }}
                               placeholder="Contoh: BCA a.n. Budi / Dana"
-                              className="w-full px-2.5 py-1.5 rounded bg-[#0c2119] border border-emerald-800 text-white"
+                              className={`w-full px-2.5 py-1.5 rounded border text-white ${
+                                isDestinationLocked
+                                  ? 'bg-[#071510] border-emerald-700/70 text-emerald-200 cursor-not-allowed opacity-90'
+                                  : 'bg-[#0c2119] border-emerald-800'
+                              }`}
                             />
                           </div>
 
-                          <label className="p-2.5 rounded-lg bg-[#0c2119] border border-dashed border-emerald-700 cursor-pointer flex items-center justify-between">
+                          <label className="p-2.5 rounded-lg bg-[#0c2119] border border-dashed border-emerald-700 cursor-pointer flex items-center justify-between gap-2">
                             <span className="text-emerald-200">
                               {paymentReport.proofImage
                                 ? '✓ Foto Struk Transfer Terlampir'
                                 : 'Lampirkan Foto Bukti Transfer (Opsional)'}
                             </span>
-                            <span className="text-emerald-400 underline">Pilih File</span>
+                            <span className="shrink-0 text-emerald-400 underline">Pilih File</span>
                             <input
                               type="file"
                               accept="image/*"
@@ -1737,6 +1823,7 @@ export default function LoanApplyPage() {
                       type="button"
                       onClick={() => {
                         setAuctionMode('reward');
+                        setNewRewardPercent(String(Math.min(maxAuctionReward, Number(ticketData?.reward_percent ?? maxAuctionReward))));
                         setShowAuctionForm(true);
                       }}
                       className="w-full py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs"
@@ -1750,13 +1837,13 @@ export default function LoanApplyPage() {
                         <button
                           type="button"
                           onClick={() => setAuctionMode('reward')}
-                          className={`px-3 py-2 rounded-lg border text-left font-semibold w-fit ${
+                          className={`px-3 py-2 rounded-lg border text-left font-semibold w-full ${
                             auctionMode === 'reward'
                               ? 'bg-amber-600/30 border-amber-400 text-amber-200'
                               : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
                           }`}
                         >
-                          1. Lelang Imbalan Jasa (%)
+                          1. Lelang Imbalan Jasa (%) — Maks {maxAuctionReward}%
                         </button>
 
                         {canUpgradeToContract3 && (
@@ -1774,28 +1861,34 @@ export default function LoanApplyPage() {
                         )}
                       </div>
 
-                      {/* FORM OPSI 1: LELANG IMBALAN JASA (BERLAKU UNTUK KONTRAK 1, 2, DAN 3) */}
+                      {/* FORM OPSI 1: LELANG IMBALAN JASA (KONTRAK 1 & 3 MAKS 12,5%, KONTRAK 2 MAKS 20%) */}
                       {auctionMode === 'reward' && (
                         <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
                           <label className="block text-[11px] text-amber-200">
-                            Masukkan Penawaran Imbalan Jasa Baru (%){' '}
-                            {ticketContractType === 'standard_unsecured' ? '(Maks 20%)' : ''}:
+                            Masukkan Penawaran Imbalan Jasa Baru (%) (Maks {maxAuctionReward}%):
                           </label>
                           <div className="flex gap-2">
                             <input
                               type="number"
                               step="0.1"
                               min="0"
-                              max={ticketContractType === 'standard_unsecured' ? '20' : '100'}
+                              max={maxAuctionReward}
                               required
                               value={newRewardPercent}
-                              onChange={(e) => setNewRewardPercent(e.target.value)}
-                              className="flex-1 px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val !== '' && Number(val) > maxAuctionReward) {
+                                  setNewRewardPercent(String(maxAuctionReward));
+                                  return;
+                                }
+                                setNewRewardPercent(val);
+                              }}
+                              className="min-w-0 flex-1 px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
                             />
                             <button
                               type="submit"
                               disabled={submittingAuction}
-                              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs"
+                              className="shrink-0 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs"
                             >
                               {submittingAuction ? 'Kirim...' : 'Kirim Penawaran'}
                             </button>
@@ -1803,7 +1896,9 @@ export default function LoanApplyPage() {
                           <div className="text-[11px] text-emerald-300">
                             Estimasi Hadiah Baru:{' '}
                             {formatCurrencyAmount(
-                              (ticketPrincipal * (Number(newRewardPercent) || 0)) / 100,
+                              (ticketPrincipal *
+                                Math.min(maxAuctionReward, Number(newRewardPercent) || 0)) /
+                                100,
                               ticketCurrency
                             )}
                           </div>
@@ -1990,7 +2085,7 @@ export default function LoanApplyPage() {
               Cek Status Tiket
             </button>
             <span className="text-[11px] font-mono px-2.5 py-1 rounded bg-emerald-900/70 border border-emerald-700 text-emerald-300">
-              {qrInfo.token}
+              {qrInfo?.token}
             </span>
           </div>
         </div>
@@ -2261,17 +2356,14 @@ export default function LoanApplyPage() {
                   type="number"
                   step="0.1"
                   min="0"
-                  max={form.contractType === 'standard_unsecured' ? '20' : '100'}
+                  max={form.contractType === 'standard_unsecured' ? '20' : '12.5'}
                   required
                   value={form.rewardPercent}
                   onChange={(e) => {
                     const val = e.target.value;
-                    if (
-                      form.contractType === 'standard_unsecured' &&
-                      val !== '' &&
-                      Number(val) > 20
-                    ) {
-                      setForm({ ...form, rewardPercent: '20' });
+                    const maxFormReward = form.contractType === 'standard_unsecured' ? 20 : 12.5;
+                    if (val !== '' && Number(val) > maxFormReward) {
+                      setForm({ ...form, rewardPercent: String(maxFormReward) });
                       return;
                     }
                     setForm({ ...form, rewardPercent: val });
@@ -2280,8 +2372,8 @@ export default function LoanApplyPage() {
                 />
                 <span className="text-[10px] text-emerald-300/75">
                   {form.contractType === 'standard_unsecured'
-                    ? 'Khusus Kontrak 2: Imbalan jasa otomatis 20% (maks 20%, tetap bisa dinegosiasikan/lelang)'
-                    : 'Standar kreditur: 12,5% (dapat dinegosiasikan jika ditolak)'}
+                    ? 'Khusus Kontrak 2: Imbalan jasa maksimal 20% (dapat dinegosiasikan/lelang)'
+                    : 'Kontrak 1 & 3: Maksimal 12,5% (dapat dinegosiasikan/lelang)'}
                 </span>
               </div>
 

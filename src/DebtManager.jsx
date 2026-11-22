@@ -1565,6 +1565,8 @@ export default function DebtManager({
   const [newTypeName, setNewTypeName] = useState('');
   const [showQrModal, setShowQrModal] = useState(false);
   const [qrLinkData, setQrLinkData] = useState(null);
+  const [qrPaymentAccount, setQrPaymentAccount] = useState('');
+  const [qrPaymentMethod, setQrPaymentMethod] = useState('transfer');
   const [loadingQr, setLoadingQr] = useState(false);
   const [copiedQrLink, setCopiedQrLink] = useState(false);
 
@@ -1824,25 +1826,61 @@ const newPaymentEntry = {
   };
   
   const handleOpenQrModal = async () => {
-    const uid = auth?.currentUser?.uid || localStorage.getItem('wgen_last_uid');
-    if (!uid) return;
-    setShowQrModal(true);
-    setLoadingQr(true);
-    try {
-      const data = await getOrCreateLenderQrLink({
-        lenderUid: uid,
-        lenderName: auth?.currentUser?.displayName || localStorage.getItem('wgen_username') || '',
-        defaultCurrency: managerCurrency || 'IDR',
-        isMicro: false
-      });
-      setQrLinkData(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingQr(false);
-    }
-  };
+  const uid = auth?.currentUser?.uid || localStorage.getItem('wgen_last_uid');
+  if (!uid) return;
+  setShowQrModal(true);
+  setLoadingQr(true);
+  try {
+    const savedAcc = localStorage.getItem('wgen_default_payment_account') || '';
+    const savedMethod = localStorage.getItem('wgen_default_payment_method') || 'transfer';
 
+    const data = await getOrCreateLenderQrLink({
+      lenderUid: uid,
+      lenderName: auth?.currentUser?.displayName || localStorage.getItem('wgen_username') || '',
+      defaultCurrency: managerCurrency || 'IDR',
+      isMicro: false
+    });
+
+    const finalAcc = data?.payment_account_info || savedAcc;
+    setQrPaymentAccount(finalAcc);
+    setQrPaymentMethod(data?.payment_method_key || savedMethod);
+    setQrLinkData({
+      ...data,
+      payment_account_info: finalAcc,
+      payment_method_key: data?.payment_method_key || savedMethod
+    });
+  } catch (err) {
+    console.error(err);
+  } finally {
+    setLoadingQr(false);
+  }
+};
+const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodValue = qrPaymentMethod) => {
+  const cleanAcc = String(accValue || '').trim();
+  localStorage.setItem('wgen_default_payment_account', cleanAcc);
+  localStorage.setItem('wgen_default_payment_method', methodValue);
+
+  setQrLinkData((prev) =>
+    prev
+      ? {
+          ...prev,
+          payment_account_info: cleanAcc,
+          payment_method_key: methodValue
+        }
+      : prev
+  );
+
+  if (qrLinkData?.token && typeof updateLenderQrSettings === 'function') {
+    try {
+      await updateLenderQrSettings(qrLinkData.token, {
+        paymentAccountInfo: cleanAcc,
+        paymentMethodKey: methodValue
+      });
+    } catch (err) {
+      console.warn('Gagal menyinkronkan rekening QR ke server:', err);
+    }
+  }
+};
   const handleDownloadQrPng = () => {
     const canvas = document.getElementById('wgen-loan-qr-canvas');
     if (!canvas) return;
@@ -2065,8 +2103,19 @@ const newPaymentEntry = {
       
 
   // Simpan perubahan database + (opsional) buka WhatsApp
+  // Simpan perubahan database + (opsional) buka WhatsApp
   const handleConfirmActionModal = async (sendToWa = false) => {
-    const { type, app, offeredPrincipal, reasonText, collateralNote, dropAddress, collateralReceived, waMessage } = actionModal;
+    const {
+      type,
+      app,
+      offeredPrincipal,
+      offeredTenor,
+      reasonText,
+      collateralNote,
+      dropAddress,
+      collateralReceived,
+      waMessage
+    } = actionModal;
     if (!app) return;
 
     try {
@@ -2112,29 +2161,13 @@ const newPaymentEntry = {
         });
         setIncomingApps((prev) =>
           prev.map((item) =>
-            item.id === app.id ? { ...item, status: 'counter_offer', rejection_reason: reasonText } : item
+            item.id === app.id
+              ? { ...item, status: 'counter_offer', rejection_reason: reasonText }
+              : item
           )
         );
-      } else if (type === 'rejected') {
-        await updateApplicationFeedback({
-          applicationId: app.id,
-          status: 'rejected',
-          rejectionReason: reasonText
-        });
-        setIncomingApps((prev) => prev.filter((item) => item.id !== app.id));
-      } else if (type === 'collateral_drop') {
-        const finalCollateralFeedback = collateralReceived
-          ? `[✓ BARANG JAMINAN DITERIMA] ${collateralNote}`
-          : `[INSTRUKSI SERAH TERIMA / DROP JAMINAN] ${collateralNote}\nAlamat Drop-Off: ${dropAddress}`;
-
-        await updateApplicationFeedback({
-          applicationId: app.id,
-          status: app.status,
-          rejectionReason: app.rejection_reason || null,
-          collateralFeedback: finalCollateralFeedback
-        });
-        } else if (type === 'tenor_approval') {
-        const cleanTenor = Math.min(12, Math.max(1, parseInt(actionModal.offeredTenor, 10) || 1));
+      } else if (type === 'tenor_approval') {
+        const cleanTenor = Math.min(12, Math.max(1, parseInt(offeredTenor, 10) || 1));
         const formattedNote = `[PERSETUJUAN TENOR FINAL: ${cleanTenor} BLN] ${reasonText || ''}`.trim();
 
         await updateApplicationFeedback({
@@ -2157,13 +2190,33 @@ const newPaymentEntry = {
               : item
           )
         );
+      } else if (type === 'rejected') {
+        await updateApplicationFeedback({
+          applicationId: app.id,
+          status: 'rejected',
+          rejectionReason: reasonText
+        });
+        setIncomingApps((prev) => prev.filter((item) => item.id !== app.id));
+      } else if (type === 'collateral_drop') {
+        const finalCollateralFeedback = collateralReceived
+          ? `[✓ BARANG JAMINAN DITERIMA] ${collateralNote}`
+          : `[INSTRUKSI SERAH TERIMA / DROP JAMINAN] ${collateralNote}\nAlamat Drop-Off: ${dropAddress}`;
+
+        await updateApplicationFeedback({
+          applicationId: app.id,
+          status: app.status,
+          rejectionReason: app.rejection_reason || null,
+          collateralFeedback: finalCollateralFeedback
+        });
 
         localStorage.setItem('wgen_collateral_drop_address', dropAddress);
         setDropAddressDefault(dropAddress);
 
         setIncomingApps((prev) =>
           prev.map((item) =>
-            item.id === app.id ? { ...item, collateral_feedback: finalCollateralFeedback } : item
+            item.id === app.id
+              ? { ...item, collateral_feedback: finalCollateralFeedback }
+              : item
           )
         );
       }
@@ -2178,7 +2231,6 @@ const newPaymentEntry = {
       alert('Gagal menyimpan pembaruan status: ' + err.message);
     }
   };
-
   // Simpan teks pesan saat ini menjadi Template Default permanen
   const handleSaveCurrentAsTemplate = () => {
     const { type, waMessage } = actionModal;
@@ -5326,23 +5378,36 @@ const getDynamicTierTexts = (targetCurr) => {
                     className={`w-full px-3 py-1.5 rounded-lg text-[11px] text-center border ${inputBg}`}
                   />
                 </div>
-                <div className="w-full text-left space-y-1 pt-1">
-                    <label className="text-[11px] font-semibold text-slate-400">
-                      Rekening / E-Wallet Tujuan Pembayaran (Otomatis Terisi Saat ACC):
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="....."
-                      defaultValue={localStorage.getItem('wgen_default_payment_account') || ''}
-                      onBlur={(e) => {
-                        const val = e.target.value.trim();
-                        localStorage.setItem('wgen_default_payment_account', val);
-                        setQrLinkData((prev) => (prev ? { ...prev, payment_account_info: val } : prev));
-                      }}
-                      className={`w-full px-3 py-1.5 rounded-lg text-xs border ${inputBg}`}
-                    />
-                  </div>
-                <div className="grid grid-cols-2 gap-2.5 text-xs">
+                <div className="w-full text-left space-y-1.5 pt-1">
+                        <label className="text-[11px] font-semibold text-slate-400">
+                          Rekening / E-Wallet Tujuan Pembayaran (Otomatis Tersimpan & Terisi Saat ACC):
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="Contoh: BCA 1234567890 a.n Budi / Dana 0812xxx..."
+                            value={qrPaymentAccount}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setQrPaymentAccount(val);
+                              localStorage.setItem('wgen_default_payment_account', val);
+                            }}
+                            onBlur={(e) => handleSaveQrPaymentAccount(e.target.value, qrPaymentMethod)}
+                            className={`flex-1 px-3 py-1.5 rounded-lg text-xs border ${inputBg}`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleSaveQrPaymentAccount(qrPaymentAccount, qrPaymentMethod);
+                              showToast('Nomor rekening QR berhasil disimpan!', 'success');
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shrink-0"
+                          >
+                            Simpan
+                          </button>
+                        </div>
+                      </div>
+                  <div className="grid grid-cols-2 gap-2.5 text-xs">
                   <button
                     type="button"
                     onClick={() => {
@@ -5745,6 +5810,75 @@ const getDynamicTierTexts = (targetCurr) => {
                   </div>
                 );
               })()}
+              {/* Kontrol Khusus Persetujuan Tenor Final */}
+              {actionModal.type === 'tenor_approval' && (() => {
+                const limits = getAppContractLimits(actionModal.app);
+
+                const handleTenorChange = (rawInput, customReason) => {
+                  const digitsOnly = String(rawInput || '').replace(/\D/g, '');
+                  const clamped =
+                    digitsOnly === ''
+                      ? ''
+                      : String(Math.min(12, Math.max(1, parseInt(digitsOnly, 10) || 1)));
+                  const tenorForMsg = clamped || '1';
+                  const nextReason =
+                    customReason !== undefined
+                      ? customReason
+                      : `Persetujuan tenor final ditetapkan menjadi ${tenorForMsg} bulan (ketentuan tetap / non-lelang). Silakan konfirmasi YES (Setuju) atau NO (Tolak/Batal).`;
+
+                  setActionModal((prev) => ({
+                    ...prev,
+                    offeredTenor: clamped,
+                    reasonText: nextReason,
+                    waMessage: buildWaMessage('tenor_approval', prev.app, {
+                      offeredTenor: tenorForMsg,
+                      reasonText: nextReason
+                    })
+                  }));
+                };
+
+                return (
+                  <div className="space-y-2.5">
+                    <div className="p-2.5 rounded-lg bg-teal-950/60 border border-teal-500/40 text-[11px] text-teal-200 flex flex-wrap items-center justify-between gap-1">
+                      <span className="font-bold">{limits.contractLabel}</span>
+                      <span className="font-mono font-semibold text-emerald-300">
+                        Tenor Final: 1 – 12 Bulan (YES / NO)
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 mb-1">
+                        Tenor Final yang Disetujui (Bulan):
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="12"
+                        inputMode="numeric"
+                        placeholder="Contoh: 3"
+                        value={actionModal.offeredTenor}
+                        onChange={(e) => handleTenorChange(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-teal-500/60 text-white font-bold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 mb-1">
+                        Catatan / Ketentuan Tenor Final:
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={actionModal.reasonText}
+                        onChange={(e) =>
+                          handleTenorChange(actionModal.offeredTenor || '1', e.target.value)
+                        }
+                        className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white"
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
+      
 
               {/* Kontrol Alasan Lelang Jasa / Penolakan */}
               {(actionModal.type === 'counter_offer' || actionModal.type === 'rejected') && (
@@ -5815,84 +5949,7 @@ const getDynamicTierTexts = (targetCurr) => {
           </div>
         </div>
       )}
-      {/* Kontrol Khusus Persetujuan Tenor Final (Non-Lelang) */}
-{actionModal.type === 'tenor_approval' && (() => {
-  const limits = getAppContractLimits(actionModal.app);
-  const selectedTenorNum = Number(actionModal.offeredTenor || 1);
-  return (
-    <div className="space-y-2.5">
-      <div className="p-2.5 rounded-lg bg-teal-950/60 border border-teal-500/40 text-[11px] text-teal-200 space-y-1">
-        <div className="flex items-center justify-between font-bold">
-          <span>{limits.contractLabel}</span>
-          <span className="px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-300 text-[10px]">
-            NON-LELANG (FINAL)
-          </span>
-        </div>
-        <p className="text-teal-200/80">
-          Tenor ini bersifat keputusan final (bukan tawar-menawar). Peminjam hanya memiliki opsi <strong>Setuju</strong> atau <strong>Tolak</strong> di halaman tiketnya.
-        </p>
-      </div>
-
-      <div>
-        <label className="block text-slate-300 mb-1.5 font-semibold">
-          Pilih Tenor Final yang Disetujui (Bulan):
-        </label>
-        <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => {
-            const isSelected = selectedTenorNum === m;
-            return (
-              <button
-                key={m}
-                type="button"
-                onClick={() => {
-                  const tenorStr = String(m);
-                  const autoNote = `Persetujuan tenor final ditetapkan menjadi ${m} bulan (ketentuan tetap / non-lelang). Silakan konfirmasi setuju atau tolak.`;
-                  setActionModal((prev) => ({
-                    ...prev,
-                    offeredTenor: tenorStr,
-                    reasonText: autoNote,
-                    waMessage: buildWaMessage('tenor_approval', prev.app, {
-                      offeredTenor: tenorStr,
-                      reasonText: autoNote
-                    })
-                  }));
-                }}
-                className={`py-2 rounded-lg text-xs font-bold border transition ${
-                  isSelected
-                    ? 'bg-teal-500 text-slate-950 border-teal-400 shadow'
-                    : 'bg-slate-900/90 text-slate-300 border-slate-700 hover:border-teal-500/50'
-                }`}
-              >
-                {m} Bln
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-slate-300 mb-1">Catatan Ketentuan Tenor:</label>
-        <textarea
-          rows={2}
-          value={actionModal.reasonText}
-          onChange={(e) => {
-            const val = e.target.value;
-            setActionModal((prev) => ({
-              ...prev,
-              reasonText: val,
-              waMessage: buildWaMessage('tenor_approval', prev.app, {
-                offeredTenor: prev.offeredTenor,
-                reasonText: val
-              })
-            }));
-          }}
-          className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white"
-        />
-      </div>
-    </div>
-  );
-})()}
-
+              
       {/* MODAL: Form Tambah / Edit Pinjaman */}
       {isDebtModalOpen && (
         <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 pb-24 sm:pb-6 overflow-y-auto">

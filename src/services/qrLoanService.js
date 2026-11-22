@@ -14,11 +14,31 @@ function generateAppId() {
 }
 
 /**
-- 0. Migrasi aman: Pastikan seluruh kolom tambahan tersedia di tabel loan_applications
+ * 0a. Migrasi aman: Pastikan kolom tambahan tersedia di tabel lender_qr_links
+ */
+let qrColumnsEnsured = false;
+export async function ensureQrLinkExtraColumns() {
+  if (qrColumnsEnsured) return;
+  const alters = [
+    `ALTER TABLE lender_qr_links ADD COLUMN payment_destination TEXT DEFAULT ''`
+  ];
+  for (const sql of alters) {
+    try {
+      await turso.execute(sql);
+    } catch (_) {
+      // Abaikan jika kolom sudah ada di database
+    }
+  }
+  qrColumnsEnsured = true;
+}
+
+/**
+ * 0b. Migrasi aman: Pastikan seluruh kolom tambahan tersedia di tabel loan_applications
  */
 let columnsEnsured = false;
 export async function ensureApplicationExtraColumns() {
   if (columnsEnsured) return;
+  await ensureQrLinkExtraColumns();
   const alters = [
     `ALTER TABLE loan_applications ADD COLUMN reward_percent REAL DEFAULT 12.5`,
     `ALTER TABLE loan_applications ADD COLUMN contract_type TEXT DEFAULT 'secured_collateral'`,
@@ -31,6 +51,7 @@ export async function ensureApplicationExtraColumns() {
     `ALTER TABLE loan_applications ADD COLUMN paid_amount REAL DEFAULT 0`,
     `ALTER TABLE loan_applications ADD COLUMN paid_installments INTEGER DEFAULT 0`,
     `ALTER TABLE loan_applications ADD COLUMN installment_history TEXT DEFAULT '[]'`,
+    `ALTER TABLE loan_applications ADD COLUMN payment_destination TEXT DEFAULT ''`,
     `ALTER TABLE loan_applications ADD COLUMN updated_at TEXT`
   ];
   for (const sql of alters) {
@@ -44,15 +65,17 @@ export async function ensureApplicationExtraColumns() {
 }
 
 /**
-- 1. Ambil QR Link aktif milik user, atau buat baru jika belum ada
+ * 1. Ambil QR Link aktif milik user, atau buat baru jika belum ada
  */
 export async function getOrCreateLenderQrLink({
   lenderUid,
   lenderName = '',
   defaultCurrency = 'IDR',
-  isMicro = false
+  isMicro = false,
+  paymentDestination = ''
 }) {
   if (!lenderUid) throw new Error('User UID tidak ditemukan.');
+  await ensureQrLinkExtraColumns();
 
   const existing = await turso.execute({
     sql: `SELECT * FROM lender_qr_links WHERE lender_uid = ? ORDER BY created_at DESC LIMIT 1`,
@@ -60,14 +83,29 @@ export async function getOrCreateLenderQrLink({
   });
 
   if (existing.rows.length > 0) {
-    return existing.rows[0];
+    const row = existing.rows[0];
+    if (paymentDestination && !row.payment_destination) {
+      await turso.execute({
+        sql: `UPDATE lender_qr_links SET payment_destination = ? WHERE token = ?`,
+        args: [paymentDestination.trim(), row.token]
+      });
+      return { ...row, payment_destination: paymentDestination.trim() };
+    }
+    return row;
   }
 
   const newToken = generateRandomToken('WGN');
   await turso.execute({
-    sql: `INSERT INTO lender_qr_links (token, lender_uid, lender_name, default_currency, is_micro, is_active)
-          VALUES (?, ?, ?, ?, ?, 1)`,
-    args: [newToken, lenderUid, lenderName, defaultCurrency, isMicro ? 1 : 0]
+    sql: `INSERT INTO lender_qr_links (token, lender_uid, lender_name, default_currency, is_micro, payment_destination, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, 1)`,
+    args: [
+      newToken,
+      lenderUid,
+      lenderName,
+      defaultCurrency,
+      isMicro ? 1 : 0,
+      (paymentDestination || '').trim()
+    ]
   });
 
   const created = await turso.execute({
@@ -78,35 +116,60 @@ export async function getOrCreateLenderQrLink({
 }
 
 /**
-- 2. Update pengaturan QR Link (nama default, mata uang, mode mikro, status aktif)
+ * 2. Update pengaturan QR Link (nama default, mata uang, mode mikro, rekening tujuan, status aktif)
  */
-export async function updateLenderQrSettings(token, { lenderName, defaultCurrency, isMicro, isActive }) {
+export async function updateLenderQrSettings(
+  token,
+  { lenderName, defaultCurrency, isMicro, isActive, paymentDestination, payment_destination } = {}
+) {
+  await ensureQrLinkExtraColumns();
+  const destVal =
+    paymentDestination !== undefined
+      ? String(paymentDestination).trim()
+      : payment_destination !== undefined
+      ? String(payment_destination).trim()
+      : null;
+
   await turso.execute({
     sql: `UPDATE lender_qr_links
           SET lender_name = COALESCE(?, lender_name),
               default_currency = COALESCE(?, default_currency),
               is_micro = COALESCE(?, is_micro),
-              is_active = COALESCE(?, is_active)
+              is_active = COALESCE(?, is_active),
+              payment_destination = COALESCE(?, payment_destination)
           WHERE token = ?`,
     args: [
       lenderName ?? null,
       defaultCurrency ?? null,
       typeof isMicro === 'boolean' ? (isMicro ? 1 : 0) : null,
       typeof isActive === 'boolean' ? (isActive ? 1 : 0) : null,
+      destVal,
       token
     ]
   });
 }
 
 /**
-- 3. Buat ulang token baru (jika link lama bocor/ingin diganti)
+ * 3. Buat ulang token baru (jika link lama bocor/ingin diganti)
  */
 export async function regenerateLenderQrLink({
   lenderUid,
   lenderName = '',
   defaultCurrency = 'IDR',
-  isMicro = false
+  isMicro = false,
+  paymentDestination = ''
 }) {
+  await ensureQrLinkExtraColumns();
+
+  let resolvedDest = (paymentDestination || '').trim();
+  if (!resolvedDest && lenderUid) {
+    const prev = await turso.execute({
+      sql: `SELECT payment_destination FROM lender_qr_links WHERE lender_uid = ? ORDER BY created_at DESC LIMIT 1`,
+      args: [lenderUid]
+    });
+    resolvedDest = (prev.rows?.[0]?.payment_destination || '').trim();
+  }
+
   await turso.execute({
     sql: `UPDATE lender_qr_links SET is_active = 0 WHERE lender_uid = ?`,
     args: [lenderUid]
@@ -114,9 +177,9 @@ export async function regenerateLenderQrLink({
 
   const newToken = generateRandomToken('WGN');
   await turso.execute({
-    sql: `INSERT INTO lender_qr_links (token, lender_uid, lender_name, default_currency, is_micro, is_active)
-          VALUES (?, ?, ?, ?, ?, 1)`,
-    args: [newToken, lenderUid, lenderName, defaultCurrency, isMicro ? 1 : 0]
+    sql: `INSERT INTO lender_qr_links (token, lender_uid, lender_name, default_currency, is_micro, payment_destination, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, 1)`,
+    args: [newToken, lenderUid, lenderName, defaultCurrency, isMicro ? 1 : 0, resolvedDest]
   });
 
   const created = await turso.execute({
@@ -127,12 +190,13 @@ export async function regenerateLenderQrLink({
 }
 
 /**
-- 4. Validasi token saat calon peminjam membuka link /apply?token=...
+ * 4. Validasi token saat calon peminjam membuka link /apply?token=...
  */
 export async function getQrLinkByToken(token) {
   if (!token) return null;
+  await ensureQrLinkExtraColumns();
   const res = await turso.execute({
-    sql: `SELECT token, lender_uid, lender_name, default_currency, is_micro, is_active
+    sql: `SELECT token, lender_uid, lender_name, default_currency, is_micro, payment_destination, is_active
           FROM lender_qr_links
           WHERE token = ? LIMIT 1`,
     args: [token.trim().toUpperCase()]
@@ -142,7 +206,7 @@ export async function getQrLinkByToken(token) {
 }
 
 /**
-- 5. Kirim pengajuan pinjaman lengkap dari form publik ke akun lender terkait
+ * 5. Kirim pengajuan pinjaman lengkap dari form publik ke akun lender terkait
  */
 export async function submitLoanApplication(payload) {
   await ensureApplicationExtraColumns();
@@ -164,6 +228,13 @@ export async function submitLoanApplication(payload) {
       ? Number(payload.rewardPercent)
       : defaultReward;
 
+  const resolvedPaymentDestination = (
+    payload.paymentDestination ||
+    payload.payment_destination ||
+    qrInfo.payment_destination ||
+    ''
+  ).trim();
+
   await turso.execute({
     sql: `INSERT INTO loan_applications (
             id, qr_token, lender_uid, borrower_name, debtor_id, debtor_address,
@@ -172,8 +243,8 @@ export async function submitLoanApplication(payload) {
             has_collateral, collateral_desc, collateral_value,
             photo_id, photo_selfie, photo_selfie_id,
             photo_collateral_1, photo_collateral_2,
-            notes, status, paid_amount, paid_installments, installment_history, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 0, '[]', ?)`,
+            notes, payment_destination, status, paid_amount, paid_installments, installment_history, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 0, '[]', ?)`,
     args: [
       id,
       qrInfo.token,
@@ -198,15 +269,42 @@ export async function submitLoanApplication(payload) {
       isWithCollateral ? (payload.photoCollateral1 || '') : '',
       isWithCollateral ? (payload.photoCollateral2 || '') : '',
       (payload.notes || '').trim(),
+      resolvedPaymentDestination,
       nowIso
     ]
   });
 
-  return { id, lenderName: qrInfo.lender_name };
+  return {
+    id,
+    lenderName: qrInfo.lender_name,
+    paymentDestination: resolvedPaymentDestination
+  };
 }
 
 /**
-- 6. Ambil daftar pengajuan masuk untuk akun lender yang sedang login
+ * Helper internal: lengkapi payment_destination dari lender_qr_links jika kosong
+ */
+async function hydratePaymentDestination(row) {
+  if (!row) return null;
+  if (row.payment_destination && String(row.payment_destination).trim()) {
+    return row;
+  }
+  if (!row.qr_token) return row;
+  try {
+    await ensureQrLinkExtraColumns();
+    const qrRes = await turso.execute({
+      sql: `SELECT payment_destination FROM lender_qr_links WHERE token = ? LIMIT 1`,
+      args: [String(row.qr_token).trim().toUpperCase()]
+    });
+    const dest = qrRes.rows?.[0]?.payment_destination || '';
+    return { ...row, payment_destination: dest };
+  } catch {
+    return row;
+  }
+}
+
+/**
+ * 6. Ambil daftar pengajuan masuk untuk akun lender yang sedang login
  */
 export async function getIncomingApplications(lenderUid, statusFilter = 'pending') {
   if (!lenderUid) return [];
@@ -222,11 +320,12 @@ export async function getIncomingApplications(lenderUid, statusFilter = 'pending
           sql: `SELECT * FROM loan_applications WHERE lender_uid = ? AND status = ? ORDER BY created_at DESC`,
           args: [lenderUid, statusFilter]
         });
-  return res.rows;
+
+  return Promise.all(res.rows.map((r) => hydratePaymentDestination(r)));
 }
 
 /**
-- 7. Ubah status pengajuan sederhana ('approved' atau 'rejected')
+ * 7. Ubah status pengajuan sederhana ('approved' atau 'rejected')
  */
 export async function updateApplicationStatus(applicationId, status) {
   await ensureApplicationExtraColumns();
@@ -238,7 +337,7 @@ export async function updateApplicationStatus(applicationId, status) {
 }
 
 /**
-- 8. Ambil status pengajuan berdasarkan ID Tiket (untuk halaman publik ?ticket=...)
+ * 8. Ambil status pengajuan berdasarkan ID Tiket (untuk halaman publik ?ticket=...)
  */
 export async function getLoanApplicationById(applicationId) {
   if (!applicationId) return null;
@@ -247,18 +346,12 @@ export async function getLoanApplicationById(applicationId) {
     sql: `SELECT * FROM loan_applications WHERE id = ? LIMIT 1`,
     args: [applicationId.trim()]
   });
-  return res.rows?.[0] || null;
+  const row = res.rows?.[0] || null;
+  return hydratePaymentDestination(row);
 }
 
 /**
-- 9. Sistem Lelang, Persetujuan Tenor & Upgrade Multi-Opsi:
--    - Persetujuan Tenor Final (accept_tenor_offer -> 'borrower_agreed' / reject_tenor_offer -> 'rejected')
--    - Lelang Imbalan Jasa (reward_percent)
--    - Lelang Nominal Pokok Pinjaman (principal_amount)
--    - Respon Tawaran Pokok Kreditur (accept_revised_principal / reject_revised_principal / request_add_principal maks 5x)
--    - Update Rincian Jaminan (collateral_value)
--    - Upgrade Kontrak 2 -> Kontrak 3 (upgrade_to_collateral)
--    - Upload Bukti Drop Jaminan (collateral_drop_proof)
+ * 9. Sistem Lelang, Persetujuan Tenor & Upgrade Multi-Opsi
  */
 export async function resubmitLoanCounterOffer(
   applicationId,
@@ -463,15 +556,16 @@ export async function resubmitLoanCounterOffer(
 }
 
 /**
-- 10. Kreditur memberi feedback jaminan, lelang pokok, tenor final, atau menolak dengan alasan lelang imbalan jasa
+ * 10. Kreditur memberi feedback jaminan, lelang pokok, tenor final, atau menolak dengan alasan lelang imbalan jasa
  */
 export async function updateApplicationFeedback({
   applicationId,
-  status, // 'pending' | 'counter_offer' | 'tenor_offer' | 'borrower_agreed' | 'rejected' | 'approved'
+  status,
   rejectionReason = null,
   collateralFeedback = null,
   counterPrincipalAmount = null,
-  approvedTenorMonths = null
+  approvedTenorMonths = null,
+  paymentDestination = null
 }) {
   await ensureApplicationExtraColumns();
   const nowIso = new Date().toISOString();
@@ -489,6 +583,7 @@ export async function updateApplicationFeedback({
               rejection_reason = ?,
               collateral_feedback = COALESCE(?, collateral_feedback),
               counter_principal_amount = COALESCE(?, counter_principal_amount),
+              payment_destination = COALESCE(NULLIF(?, ''), payment_destination),
               updated_at = ?
           WHERE id = ?`,
     args: [
@@ -497,6 +592,7 @@ export async function updateApplicationFeedback({
       rejectionReason,
       collateralFeedback,
       counterPrincipalAmount,
+      paymentDestination ? String(paymentDestination).trim() : '',
       nowIso,
       applicationId
     ]
@@ -504,7 +600,7 @@ export async function updateApplicationFeedback({
 }
 
 /**
-- 11. Peminjam melapor sudah transfer cicilan di halaman tiket (tersimpan ke Turso)
+ * 11. Peminjam melapor sudah transfer cicilan di halaman tiket (tersimpan ke Turso)
  */
 export async function submitInstallmentPaymentReport(
   applicationId,
@@ -513,6 +609,8 @@ export async function submitInstallmentPaymentReport(
   await ensureApplicationExtraColumns();
   const app = await getLoanApplicationById(applicationId);
   if (!app) throw new Error('Tiket pengajuan tidak ditemukan.');
+
+  const lockedMethod = (app.payment_destination || transferMethod || '').trim();
 
   let history = [];
   try {
@@ -526,14 +624,13 @@ export async function submitInstallmentPaymentReport(
     id: `PAY-${Date.now()}`,
     installmentNumber: Number(installmentNumber) || 1,
     amount: Number(amount) || 0,
-    transferMethod: (transferMethod || '').trim(),
+    transferMethod: lockedMethod,
     notes: (notes || '').trim(),
     proofImage: proofImage || '',
     submittedAt: new Date().toISOString(),
     status: 'pending_verification'
   };
 
-  // Ganti laporan pending pada termin yang sama jika peminjam mengirim ulang
   const filtered = history.filter(
     (item) =>
       !(
@@ -556,7 +653,7 @@ export async function submitInstallmentPaymentReport(
 }
 
 /**
-- 12. Kreditur mengonfirmasi cicilan masuk (menambah paid_amount & paid_installments di Turso)
+ * 12. Kreditur mengonfirmasi cicilan masuk (menambah paid_amount & paid_installments di Turso)
  */
 export async function recordVerifiedInstallmentPayment({
   applicationId,
@@ -617,7 +714,7 @@ export async function recordVerifiedInstallmentPayment({
       id: `VER-${Date.now()}`,
       installmentNumber: targetTerm,
       amount: Number(amountReceived) || 0,
-      transferMethod: 'Diverifikasi Kreditur',
+      transferMethod: app.payment_destination || 'Diverifikasi Kreditur',
       notes: note,
       submittedAt: new Date().toISOString(),
       verifiedAt: new Date().toISOString(),
@@ -644,7 +741,7 @@ export async function recordVerifiedInstallmentPayment({
 }
 
 /**
-- 13. Sinkronisasi langsung total terbayar dari catatan hutang-piutang aplikasi utama ke tiket
+ * 13. Sinkronisasi langsung total terbayar dari catatan hutang-piutang aplikasi utama ke tiket
  */
 export async function syncInstallmentStatusFromLoan({
   applicationId,
