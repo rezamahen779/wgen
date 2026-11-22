@@ -226,14 +226,21 @@ export function DockAddIcon({ mouseX, onClick, label }) {
 }
 
 export default function App() {
-  // Deteksi rute publik QR Loan Application (baik lewat /apply, ?token=, ?ticket=, atau domain formadd)
-  const isFormOnlySite = import.meta.env.VITE_PUBLIC_PORTAL_ONLY === 'true';
+  const hostname = window.location.hostname.toLowerCase();
+  const pathname = window.location.pathname.toLowerCase();
+
+  // Deteksi domain publik formadd (wajib terisolasi penuh dari aplikasi utama WGen Note)
+  const isFormOnlySite =
+    import.meta.env.VITE_PUBLIC_PORTAL_ONLY === 'true' ||
+    hostname === 'formadd.vercel.app' ||
+    hostname.startsWith('formadd-') ||
+    hostname.includes('formadd');
+
   const isPublicApplyRoute =
     isFormOnlySite ||
-    window.location.pathname.replace(/\/+$/, '') === '/apply' ||
+    pathname.startsWith('/apply') ||
     Boolean(new URLSearchParams(window.location.search).get('token')) ||
     Boolean(new URLSearchParams(window.location.search).get('ticket'));
-  const mainMouseX = useMotionValue(Infinity);
   const subMouseX = useMotionValue(Infinity);
 
   const [activeTab, setActiveTab] = useState('home');
