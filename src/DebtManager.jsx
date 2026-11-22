@@ -1824,6 +1824,8 @@ const newPaymentEntry = {
       'Halo {nama}, pengajuan pinjaman Anda sebesar {nominal} (Imbalan jasa {jasa}%, tenor {tenor} bln) telah DISETUJUI.\nCek detail status & kontrak Anda di:\n{link_status}',
     counter_offer:
       'Halo {nama}, pengajuan pinjaman Anda sebesar {nominal} belum disepakati pada imbalan jasa {jasa}%.\nSilakan ajukan ulang penawaran imbalan jasa (Sistem Lelang) melalui link berikut:\n{link_status}',
+    upgrade_collateral:
+      'Halo {nama}, untuk pengajuan pinjaman sebesar {nominal}, silakan UPGRADE kontrak Anda ke Kontrak 3 (Dengan Jaminan) agar dapat di pertimbangkan.\nKlik link berikut untuk melampirkan data/foto jaminan:\n{link_status}',
     collateral_drop:
       'Halo {nama}, terkait jaminan ({jaminan}) untuk pengajuan {nominal}:\n{feedback_jaminan}\n\nJika saya sedang tidak di rumah, silakan antar/drop jaminan ke alamat:\n{alamat_drop}\n\nPantau status pengajuan Anda di:\n{link_status}',
     rejected:
@@ -1885,10 +1887,12 @@ const newPaymentEntry = {
     const defaultReason =
       type === 'counter_offer'
         ? `Imbalan jasa (${app.reward_percent || 20}%) belum sesuai kesepakatan. Silakan ajukan penawaran imbalan jasa ulang.`
+        : type === 'upgrade_collateral'
+        ? 'Pengajuan tanpa jaminan belum dapat disetujui untuk nominal ini. Silakan upgrade ke Kontrak 3 dengan melampirkan jaminan.'
         : type === 'rejected'
         ? 'Persyaratan pengajuan belum memenuhi kriteria.'
         : '';
-
+        
     const defaultCollateralNote =
       app.collateral_feedback ||
       'Mohon serahkan/antarkan unit jaminan beserta kelengkapannya untuk pengecekan fisik.';
@@ -1917,7 +1921,7 @@ const newPaymentEntry = {
     if (!app) return;
 
     try {
-      if (type === 'counter_offer') {
+      if (type === 'counter_offer' || type === 'upgrade_collateral') {
         await updateApplicationFeedback({
           applicationId: app.id,
           status: 'counter_offer',
@@ -1929,7 +1933,7 @@ const newPaymentEntry = {
           )
         );
       } else if (type === 'rejected') {
-        await updateApplicationFeedback({
+          await updateApplicationFeedback({
           applicationId: app.id,
           status: 'rejected',
           rejectionReason: reasonText
@@ -5150,14 +5154,22 @@ const getDynamicTierTexts = (targetCurr) => {
 
                     {/* Tombol Aksi Lengkap */}
                     <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-700/50">
-                      {/* 1. Feedback & Drop Jaminan */}
-                      {Number(app.has_collateral) === 1 && (
+                     {/* 1. Feedback & Drop Jaminan (Jika sudah ada jaminan) OR Minta Upgrade (Jika tanpa jaminan) */}
+                      {Number(app.has_collateral) === 1 ? (
                         <button
                           type="button"
                           onClick={() => openActionModal('collateral_drop', app)}
                           className="px-2.5 py-1.5 rounded-lg bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/40 text-sky-300 font-semibold"
                         >
                           Jaminan & Alamat Drop
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => openActionModal('upgrade_collateral', app)}
+                          className="px-2.5 py-1.5 rounded-lg bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/40 text-sky-300 font-semibold"
+                        >
+                          ★ Minta Upgrade Jaminan
                         </button>
                       )}
 
@@ -5213,6 +5225,7 @@ const getDynamicTierTexts = (targetCurr) => {
               <h4 className="text-sm font-bold text-white">
                 {actionModal.type === 'collateral_drop' && 'Feedback & Serah Terima / Drop Jaminan'}
                 {actionModal.type === 'counter_offer' && 'Sistem Lelang Imbalan Jasa (Minta Penawaran Ulang)'}
+                {actionModal.type === 'upgrade_collateral' && 'Minta Peminjam Upgrade ke Kontrak 3 (Jaminan)'}
                 {actionModal.type === 'rejected' && 'Tolak Pengajuan Pinjaman'}
                 {actionModal.type === 'approved' && 'Kirim Notifikasi Persetujuan (ACC) via WhatsApp'}
               </h4>
