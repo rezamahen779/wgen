@@ -375,6 +375,11 @@ export default function LoanApplyPage() {
   const tokenParam = params.get('token') || '';
   const ticketParam = params.get('ticket') || '';
 
+  // Ubah judul tab browser menjadi formadd (tanpa mengubah favicon/logo)
+  useEffect(() => {
+    document.title = 'formadd';
+  }, []);
+
   const [liveRates, setLiveRates] = useState(FALLBACK_USD_RATES);
 
   const [ticketInput, setTicketInput] = useState(ticketParam);
@@ -413,7 +418,7 @@ export default function LoanApplyPage() {
     requestedAmount: '',
     currency: 'IDR',
     rewardPercent: '12.5',
-    tenorMonths: 1,
+    tenorMonths: '1',
     isInstallment: false,
     contractType: 'secured_collateral',
     collateralDesc: '',
@@ -636,6 +641,30 @@ export default function LoanApplyPage() {
     });
   };
 
+  // Bisa dihapus kosong, bisa diketik maksimal sampai angka 36, namun penguncian submit tetap max 12 bulan
+  const handleTenorChange = (rawVal) => {
+    const digitsOnly = rawVal.replace(/[^0-9]/g, '');
+    if (digitsOnly === '') {
+      setForm((prev) => ({ ...prev, tenorMonths: '' }));
+      return;
+    }
+    const num = Number(digitsOnly);
+    if (num > 36) {
+      setForm((prev) => ({ ...prev, tenorMonths: '36' }));
+      return;
+    }
+    setForm((prev) => ({ ...prev, tenorMonths: digitsOnly }));
+  };
+
+  const parsedTenorVal = Number(form.tenorMonths);
+  // Muncul peringatan "Masukan Tenor realistis!" sejak angka 7 s.d. 36 (hilang di 1-6 bulan)
+  const showUnrealisticTenorWarning =
+    form.tenorMonths !== '' && !isNaN(parsedTenorVal) && parsedTenorVal >= 7;
+  // Tombol kirim terkunci hanya jika kosong, < 1, atau > 12 bulan (7-12 tetap bisa dikirim!)
+  const isTenorOverLimit = form.tenorMonths !== '' && !isNaN(parsedTenorVal) && parsedTenorVal > 12;
+  const isTenorInvalid =
+    form.tenorMonths === '' || isNaN(parsedTenorVal) || parsedTenorVal < 1 || parsedTenorVal > 12;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError('');
@@ -657,6 +686,15 @@ export default function LoanApplyPage() {
         `Nominal pinjaman untuk ${selectedContract.badge} (${selectedContract.title}) wajib berada di antara ${formatMoney(
           contractLimits.min
         )} s.d. ${formatMoney(contractLimits.max)}.`
+      );
+      return;
+    }
+
+    if (isTenorInvalid) {
+      setFormError(
+        parsedTenorVal > 12
+          ? 'Masukan Tenor realistis!'
+          : 'Tenor pinjaman wajib diisi minimal 1 bulan.'
       );
       return;
     }
@@ -687,6 +725,7 @@ export default function LoanApplyPage() {
       const res = await submitLoanApplication({
         qrToken: tokenParam,
         ...form,
+        tenorMonths: Math.min(12, Math.max(1, parsedTenorVal)),
         hasCollateral: selectedContract.requiresCollateral,
         rewardPercent: Number(form.rewardPercent) || 12.5
       });
@@ -854,9 +893,7 @@ export default function LoanApplyPage() {
                 </div>
               </div>
 
-              {/* ================================================================= */}
-              {/* FEEDBACK STATUS ANGSURAN & KONFIRMASI TRANSFER (JIKA SUDAH ACC)   */}
-              {/* ================================================================= */}
+              {/* FEEDBACK STATUS ANGSURAN & KONFIRMASI TRANSFER (JIKA SUDAH ACC) */}
               {status === 'approved' && progress && (
                 <div className="p-3.5 rounded-xl bg-[#0c2119] border border-emerald-700/80 space-y-3">
                   <div className="flex items-center justify-between">
@@ -901,7 +938,7 @@ export default function LoanApplyPage() {
                     </div>
                   </div>
 
-                  {/* Rincian Status Tiap Angsuran ke-1 s.d. ke-N (Sinkron Database Turso) */}
+                  {/* Rincian Status Tiap Angsuran ke-1 s.d. ke-N */}
                   <div className="space-y-1.5">
                     <div className="text-[11px] font-semibold text-emerald-300">
                       Rincian Status Angsuran:
@@ -1202,7 +1239,7 @@ export default function LoanApplyPage() {
           <h2 className="text-lg font-bold text-white">Pengajuan Berhasil Dikirim</h2>
           <p className="text-xs text-emerald-200/80 leading-relaxed">
             Data pengajuan pinjaman Anda telah masuk ke sistem{' '}
-            <span className="font-semibold text-emerald-300">{submittedResult.lenderName || 'Pemberi Pinjaman'}</span>.
+            <span className="font-semibold text-emerald-300">Pemberi Pinjaman Terverifikasi</span>.
           </p>
 
           <div className="bg-[#071510] border border-emerald-800/80 rounded-xl p-3.5 text-xs space-y-2 text-left">
@@ -1248,14 +1285,10 @@ export default function LoanApplyPage() {
   return (
     <div className="min-h-screen bg-[#071510] text-emerald-50 py-6 px-4">
       <div className="max-w-2xl mx-auto bg-[#0c2119] border border-emerald-800/80 rounded-2xl p-5 sm:p-7 space-y-6">
-        {/* Header */}
-        <div className="border-b border-emerald-800/70 pb-4 flex flex-wrap items-start justify-between gap-2">
+        {/* Header (Nama kreditur dirahasiakan & teks tujuan dihapus) */}
+        <div className="border-b border-emerald-800/70 pb-4 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h1 className="text-lg sm:text-xl font-bold text-white">Formulir Pengajuan Pinjaman</h1>
-            <p className="text-xs text-emerald-200/80 mt-1">
-              Tujuan Pemberi Pinjaman (Kreditur):{' '}
-              <span className="font-semibold text-emerald-300">{qrInfo.lender_name || 'Akun Terverifikasi'}</span>
-            </p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -1477,7 +1510,7 @@ export default function LoanApplyPage() {
             </div>
           </div>
 
-          {/* BAGIAN 3: NOMINAL (TERKUNCI SESUAI KONTRAK), MATA UANG, IMBALAN JASA & SIMULASI */}
+          {/* BAGIAN 3: NOMINAL & TENOR */}
           <div className="space-y-3 pt-4 border-t border-emerald-800/70">
             <div className="flex flex-wrap items-center justify-between gap-1">
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
@@ -1489,24 +1522,9 @@ export default function LoanApplyPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-              <div className="sm:col-span-4">
-                <label className="block text-xs text-emerald-300 mb-1">Mata Uang *</label>
-                <select
-                  value={form.currency}
-                  onChange={(e) => handleCurrencyChange(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-lg bg-[#071510] border border-emerald-800 text-sm text-white focus:outline-none focus:border-emerald-500"
-                >
-                  {CURRENCY_CODES.map((code) => (
-                    <option key={code} value={code}>
-                      {code} ({getCurrencySymbolDynamic(code)})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="sm:col-span-5">
+              <div className="sm:col-span-8">
                 <label className="block text-xs text-emerald-300 mb-1">
-                  Nominal Pokok (Maks {formatMoney(contractLimits.max)}) *
+                  Nominal Pokok ({form.currency} — Maks {formatMoney(contractLimits.max)}) *
                 </label>
                 <input
                   type="number"
@@ -1521,21 +1539,30 @@ export default function LoanApplyPage() {
                 />
               </div>
 
-              <div className="sm:col-span-3">
+              <div className="sm:col-span-4">
                 <label className="block text-xs text-emerald-300 mb-1">Tenor (Bulan) *</label>
                 <input
-                  type="number"
-                  min="1"
-                  max="36"
+                  type="text"
+                  inputMode="numeric"
                   required
+                  placeholder="Bulan"
                   value={form.tenorMonths}
-                  onChange={(e) =>
-                    setForm({ ...form, tenorMonths: Math.max(1, Number(e.target.value) || 1) })
-                  }
-                  className="w-full px-3 py-2.5 rounded-lg bg-[#071510] border border-emerald-800 text-sm text-white focus:outline-none focus:border-emerald-500"
+                  onChange={(e) => handleTenorChange(e.target.value)}
+                  className={`w-full px-3 py-2.5 rounded-lg bg-[#071510] border text-sm text-white focus:outline-none ${
+                    showUnrealisticTenorWarning
+                      ? 'border-red-500 focus:border-red-400'
+                      : 'border-emerald-800 focus:border-emerald-500'
+                  }`}
                 />
               </div>
             </div>
+
+            {/* Peringatan muncul dari angka 7 s.d. 36 (hilang di 1-6 bulan), tapi 7-12 tetap bisa dikirim */}
+            {showUnrealisticTenorWarning && (
+              <div className="p-2.5 rounded-lg bg-red-950/80 border border-red-600 text-[11px] text-red-200 font-medium">
+                ⚠ Masukan Tenor realistis!
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
               <div>
@@ -1732,11 +1759,13 @@ export default function LoanApplyPage() {
 
           <button
             type="submit"
-            disabled={submitting || !form.agreedAllClauses}
+            disabled={submitting || !form.agreedAllClauses || isTenorInvalid}
             className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-45 disabled:cursor-not-allowed text-white font-bold text-sm transition-colors"
           >
             {submitting
               ? 'Mengirim Pengajuan...'
+              : isTenorOverLimit
+              ? 'Masukan Tenor realistis!'
               : !form.agreedAllClauses
               ? 'Centang Persetujuan Pasal 1–5 Terlebih Dahulu'
               : 'Kirim Pengajuan Pinjaman'}
