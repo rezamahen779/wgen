@@ -241,8 +241,10 @@ export default function App() {
     pathname.startsWith('/apply') ||
     Boolean(new URLSearchParams(window.location.search).get('token')) ||
     Boolean(new URLSearchParams(window.location.search).get('ticket'));
-  const subMouseX = useMotionValue(Infinity);
 
+  const mainMouseX = useMotionValue(Infinity);
+  const subMouseX = useMotionValue(Infinity);
+  
   const [activeTab, setActiveTab] = useState('home');
 
 
