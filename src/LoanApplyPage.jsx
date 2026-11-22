@@ -444,6 +444,7 @@ export default function LoanApplyPage() {
   });
   const [submittingPaymentReport, setSubmittingPaymentReport] = useState(false);
   const [paymentReportSuccess, setPaymentReportSuccess] = useState('');
+  const [auctionSuccessMsg, setAuctionSuccessMsg] = useState('');
 
   // State Sistem Lelang Multi-Opsi (Imbalan Jasa, Nominal Pokok K1 & K3, Harga Jaminan K3, Upgrade K2 -> K3)
   const [showAuctionForm, setShowAuctionForm] = useState(false);
