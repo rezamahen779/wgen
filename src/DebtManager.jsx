@@ -1569,10 +1569,40 @@ export default function DebtManager({
     }
   };
 
-  useEffect(() => {
-    loadQrApplicationsAndReports();
-  }, []);
+ useEffect(() => {
+    let isMounted = true;
 
+    const refreshIncomingApps = async () => {
+      try {
+        if (isMounted) {
+          await loadQrApplicationsAndReports();
+        }
+      } catch (err) {
+        // Abaikan error jaringan sesaat saat offline
+      }
+    };
+
+    refreshIncomingApps();
+
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        refreshIncomingApps();
+      }
+    }, 3800);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshIncomingApps();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
   // Fungsi 1-klik saat kreditur mengonfirmasi mutasi masuk
   const handleConfirmTransferFromBorrower = async (report) => {
     setVerifyingReportId(report.id);

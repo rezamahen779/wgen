@@ -487,6 +487,7 @@ export default function LoanApplyPage() {
   const [submittedResult, setSubmittedResult] = useState(null);
   const [formError, setFormError] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedTicket, setCopiedTicket] = useState(false);
 
   // Load kurs live dari currencyService saat halaman dimuat
   useEffect(() => {
@@ -1054,7 +1055,7 @@ export default function LoanApplyPage() {
             </button>
           </form>
 
-          {ticketError && (
+          {ticketData?.id && (
             <div className="p-3 rounded-lg bg-red-950/70 border border-red-700 text-xs text-red-200">
               {ticketError}
             </div>
@@ -1731,18 +1732,26 @@ export default function LoanApplyPage() {
             </div>
           </div>
 
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                navigator.clipboard?.writeText(statusUrl);
-                setCopiedLink(true);
-                setTimeout(() => setCopiedLink(false), 2500);
-              }}
-              className="flex-1 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold"
-            >
-              {copiedLink ? '✓ Link Tersalin!' : 'Salin Link Status'}
-            </button>
+          <div className="bg-[#071510] border border-emerald-800/80 rounded-xl p-3.5 text-xs space-y-2.5 text-left">
+            <div>
+              <span className="text-emerald-400 block text-[11px] mb-1">Nomor Tiket Pengajuan:</span>
+              <div className="flex items-center justify-between gap-2 p-2 rounded bg-[#0c2119] border border-emerald-800">
+                <span className="font-mono font-bold text-white text-xs sm:text-sm select-all">
+                  {submittedResult.id}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(submittedResult.id);
+                    setCopiedTicket(true);
+                    setTimeout(() => setCopiedTicket(false), 2000);
+                  }}
+                  className="shrink-0 px-2.5 py-1 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-[11px] font-semibold"
+                >
+                  {copiedTicket ? '✓ Tersalin' : 'Salin Tiket'}
+                </button>
+              </div>
+            </div>  
             <a
               href={statusUrl}
               className="flex-1 py-2.5 rounded-xl bg-[#071510] border border-emerald-600 hover:bg-emerald-900/40 text-emerald-300 text-xs font-semibold flex items-center justify-center"
