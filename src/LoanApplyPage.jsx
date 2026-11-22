@@ -1511,157 +1511,110 @@ export default function LoanApplyPage() {
             </div>
           )}
 
-          {/* SISTEM LELANG & NEGOSIASI DEBITUR (TANPA LELANG HARGA JAMINAN) */}
-          {isNegotiableStatus && (
-            <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-600/70 space-y-3">
-              <div className="font-semibold text-amber-300">
-                Sistem Lelang & Negosiasi Pengajuan
-              </div>
-              <p className="text-[11px] text-amber-100/85 leading-relaxed">
-                Ajukan penawaran ulang tanpa perlu mengisi ulang data KTP/selfie. Pilih opsi yang tersedia untuk kontrak Anda:
-              </p>
+            {/* SISTEM LELANG & NEGOSIASI DEBITUR */}
+              {isNegotiableStatus && (
+                <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-600/70 space-y-3">
+                  <div className="font-semibold text-amber-300">
+                    Sistem Lelang & Negosiasi Pengajuan
+                  </div>
+                  <p className="text-[11px] text-amber-100/85 leading-relaxed">
+                    Ajukan penawaran ulang tanpa perlu mengisi ulang data KTP/selfie. Pilih opsi negosiasi yang tersedia untuk kontrak Anda di bawah ini:
+                  </p>
 
-              {!showAuctionForm ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuctionMode('reward');
-                    setShowAuctionForm(true);
-                  }}
-                  className="w-full py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs"
-                >
-                  Buka Menu Lelang & Negosiasi Penawaran
-                </button>
-              ) : (
-                <div className="space-y-3 pt-1">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
+                  {!showAuctionForm ? (
                     <button
                       type="button"
-                      onClick={() => setAuctionMode('reward')}
-                      className={`px-2.5 py-2 rounded-lg border text-left font-semibold ${
-                        auctionMode === 'reward'
-                          ? 'bg-amber-600/30 border-amber-400 text-amber-200'
-                          : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
-                      }`}
+                      onClick={() => {
+                        setAuctionMode('reward');
+                        setShowAuctionForm(true);
+                      }}
+                      className="w-full py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs"
                     >
-                      1. Lelang Imbalan Jasa (%)
+                      Buka Menu Lelang & Negosiasi Penawaran
                     </button>
-
-                    {canAuctionPrincipal && (
-                      <button
-                        type="button"
-                        onClick={() => setAuctionMode('principal')}
-                        className={`px-2.5 py-2 rounded-lg border text-left font-semibold ${
-                          auctionMode === 'principal'
-                            ? 'bg-amber-600/30 border-amber-400 text-amber-200'
-                            : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
-                        }`}
-                      >
-                        2. Lelang Nominal Pokok
-                      </button>
-                    )}
-
-                    {canUpgradeToContract3 && (
-                      <button
-                        type="button"
-                        onClick={() => setAuctionMode('upgrade_collateral')}
-                        className={`px-2.5 py-2 rounded-lg border text-left font-semibold sm:col-span-2 ${
-                          auctionMode === 'upgrade_collateral'
-                            ? 'bg-sky-600/30 border-sky-400 text-sky-200'
-                            : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
-                        }`}
-                      >
-                        ★ Upgrade ke Kontrak 3 (Dengan Jaminan)
-                      </button>
-                    )}
-                  </div>
-
-                  {/* 1. LELANG IMBALAN JASA */}
-                  {auctionMode === 'reward' && (
-                    <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
-                      <label className="block text-[11px] text-amber-200">
-                        Masukkan Penawaran Imbalan Jasa Baru (%){' '}
-                        {ticketContractType === 'standard_unsecured' ? '(Maks 20%)' : ''}:
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          max={ticketContractType === 'standard_unsecured' ? '20' : '100'}
-                          required
-                          value={newRewardPercent}
-                          onChange={(e) => setNewRewardPercent(e.target.value)}
-                          className="flex-1 px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
-                        />
+                  ) : (
+                    <div className="space-y-3 pt-1">
+                      {/* Tab Pilihan Jenis Lelang Debitur */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
                         <button
-                          type="submit"
-                          disabled={submittingAuction}
-                          className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs"
+                          type="button"
+                          onClick={() => setAuctionMode('reward')}
+                          className={`px-2.5 py-2 rounded-lg border text-left font-semibold ${
+                            auctionMode === 'reward'
+                              ? 'bg-amber-600/30 border-amber-400 text-amber-200'
+                              : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
+                          }`}
                         >
-                          {submittingAuction ? 'Kirim...' : 'Kirim Penawaran'}
+                          1. Lelang Imbalan Jasa (%)
                         </button>
-                      </div>
-                      <div className="text-[11px] text-emerald-300">
-                        Estimasi Hadiah Baru:{' '}
-                        {formatCurrencyAmount(
-                          (ticketPrincipal * (Number(newRewardPercent) || 0)) / 100,
-                          ticketCurrency
+
+                        {canAuctionPrincipal && (
+                          <button
+                            type="button"
+                            onClick={() => setAuctionMode('principal')}
+                            className={`px-2.5 py-2 rounded-lg border text-left font-semibold ${
+                              auctionMode === 'principal'
+                                ? 'bg-amber-600/30 border-amber-400 text-amber-200'
+                                : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
+                            }`}
+                          >
+                          </button>
+                        )}
+
+                        {canUpgradeToContract3 && (
+                          <button
+                            type="button"
+                            onClick={() => setAuctionMode('upgrade_collateral')}
+                            className={`px-2.5 py-2 rounded-lg border text-left font-semibold sm:col-span-2 ${
+                              auctionMode === 'upgrade_collateral'
+                                ? 'bg-sky-600/30 border-sky-400 text-sky-200'
+                                : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
+                            }`}
+                          >
+                            ★ Upgrade ke Kontrak 3 (Jaminan)
+                          </button>
                         )}
                       </div>
-                    </form>
-                  )}
 
-                  {/* 2. LELANG NOMINAL POKOK (SESUAI BATAS KONTRAK) */}
-                  {auctionMode === 'principal' && canAuctionPrincipal && (
-                    <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
-                      <label className="block text-[11px] text-amber-200">
-                        Ajukan Nominal Pokok Pinjaman Baru ({ticketCurrency}):
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          step="any"
-                          required
-                          value={newRequestedAmount}
-                          onChange={(e) => setNewRequestedAmount(e.target.value)}
-                          placeholder="Nominal pokok baru"
-                          className="flex-1 px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
-                        />
-                        <button
-                          type="submit"
-                          disabled={submittingAuction}
-                          className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs"
-                        >
-                          {submittingAuction ? 'Kirim...' : 'Ajukan Nominal'}
-                        </button>
-                      </div>
-                      <div className="text-[11px] text-emerald-300">
-                        Batas{' '}
-                        {ticketContractType === 'micro_unsecured' ? 'Kontrak 1' : 'Kontrak 3'}:{' '}
-                        {formatCurrencyAmount(
-                          convertIdrLimit(
-                            ticketContractType === 'micro_unsecured' ? 100000 : 300000,
-                            ticketCurrency,
-                            liveRates
-                          ),
-                          ticketCurrency
-                        )}{' '}
-                        –{' '}
-                        {formatCurrencyAmount(
-                          convertIdrLimit(
-                            ticketContractType === 'micro_unsecured' ? 500000 : 50000000,
-                            ticketCurrency,
-                            liveRates
-                          ),
-                          ticketCurrency
-                        )}
-                      </div>
-                    </form>
-                  )}
+                      {/* FORM OPSI 1: LELANG IMBALAN JASA */}
+                      {auctionMode === 'reward' && (
+                        <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
+                          <label className="block text-[11px] text-amber-200">
+                            Masukkan Penawaran Imbalan Jasa Baru (%){' '}
+                            {ticketContractType === 'standard_unsecured' ? '(Maks 20%)' : ''}:
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max={ticketContractType === 'standard_unsecured' ? '20' : '100'}
+                              required
+                              value={newRewardPercent}
+                              onChange={(e) => setNewRewardPercent(e.target.value)}
+                              className="flex-1 px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
+                            />
+                            <button
+                              type="submit"
+                              disabled={submittingAuction}
+                              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs"
+                            >
+                              {submittingAuction ? 'Kirim...' : 'Kirim Penawaran'}
+                            </button>
+                          </div>
+                          <div className="text-[11px] text-emerald-300">
+                            Estimasi Hadiah Baru:{' '}
+                            {formatCurrencyAmount(
+                              (ticketPrincipal * (Number(newRewardPercent) || 0)) / 100,
+                              ticketCurrency
+                            )}
+                          </div>
+                        </form>
+                      )}
 
-                  {/* 3. UPGRADE KONTRAK 2 -> KONTRAK 3 */}
-                  {auctionMode === 'upgrade_collateral' && canUpgradeToContract3 && (
+                     
+                      {/* FORM OPSI 3: UPGRADE KONTRAK 2 -> KONTRAK 3 */}
+                     {auctionMode === 'upgrade_collateral' && canUpgradeToContract3 && (
                     <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
                       <div className="p-2 rounded-lg bg-sky-950/60 border border-sky-700/70 text-[11px] text-sky-200">
                         Upgrade pengajuan Anda dari <strong>Kontrak 2 (Tanpa Jaminan)</strong> ke{' '}
@@ -1721,221 +1674,6 @@ export default function LoanApplyPage() {
                       </button>
                     </form>
                   )}
-                </div>
-              )}
-            </div>
-          )}
-            {/* SISTEM LELANG & NEGOSIASI DEBITUR */}
-              {isNegotiableStatus && (
-                <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-600/70 space-y-3">
-                  <div className="font-semibold text-amber-300">
-                    Sistem Lelang & Negosiasi Pengajuan
-                  </div>
-                  <p className="text-[11px] text-amber-100/85 leading-relaxed">
-                    Ajukan penawaran ulang tanpa perlu mengisi ulang data KTP/selfie. Pilih opsi negosiasi yang tersedia untuk kontrak Anda di bawah ini:
-                  </p>
-
-                  {!showAuctionForm ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuctionMode('reward');
-                        setShowAuctionForm(true);
-                      }}
-                      className="w-full py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs"
-                    >
-                      Buka Menu Lelang & Negosiasi Penawaran
-                    </button>
-                  ) : (
-                    <div className="space-y-3 pt-1">
-                      {/* Tab Pilihan Jenis Lelang Debitur */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
-                        <button
-                          type="button"
-                          onClick={() => setAuctionMode('reward')}
-                          className={`px-2.5 py-2 rounded-lg border text-left font-semibold ${
-                            auctionMode === 'reward'
-                              ? 'bg-amber-600/30 border-amber-400 text-amber-200'
-                              : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
-                          }`}
-                        >
-                          1. Lelang Imbalan Jasa (%)
-                        </button>
-
-                        {canAuctionPrincipal && (
-                          <button
-                            type="button"
-                            onClick={() => setAuctionMode('principal')}
-                            className={`px-2.5 py-2 rounded-lg border text-left font-semibold ${
-                              auctionMode === 'principal'
-                                ? 'bg-amber-600/30 border-amber-400 text-amber-200'
-                                : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
-                            }`}
-                          >
-                            2. Lelang Nominal Pokok
-                          </button>
-                        )}
-
-                        {canUpgradeToContract3 && (
-                          <button
-                            type="button"
-                            onClick={() => setAuctionMode('upgrade_collateral')}
-                            className={`px-2.5 py-2 rounded-lg border text-left font-semibold sm:col-span-2 ${
-                              auctionMode === 'upgrade_collateral'
-                                ? 'bg-sky-600/30 border-sky-400 text-sky-200'
-                                : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
-                            }`}
-                          >
-                            ★ Upgrade ke Kontrak 3 (Jaminan)
-                          </button>
-                        )}
-                      </div>
-
-                      {/* FORM OPSI 1: LELANG IMBALAN JASA */}
-                      {auctionMode === 'reward' && (
-                        <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
-                          <label className="block text-[11px] text-amber-200">
-                            Masukkan Penawaran Imbalan Jasa Baru (%){' '}
-                            {ticketContractType === 'standard_unsecured' ? '(Maks 20%)' : ''}:
-                          </label>
-                          <div className="flex gap-2">
-                            <input
-                              type="number"
-                              step="0.1"
-                              min="0"
-                              max={ticketContractType === 'standard_unsecured' ? '20' : '100'}
-                              required
-                              value={newRewardPercent}
-                              onChange={(e) => setNewRewardPercent(e.target.value)}
-                              className="flex-1 px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
-                            />
-                            <button
-                              type="submit"
-                              disabled={submittingAuction}
-                              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs"
-                            >
-                              {submittingAuction ? 'Kirim...' : 'Kirim Penawaran'}
-                            </button>
-                          </div>
-                          <div className="text-[11px] text-emerald-300">
-                            Estimasi Hadiah Baru:{' '}
-                            {formatCurrencyAmount(
-                              (ticketPrincipal * (Number(newRewardPercent) || 0)) / 100,
-                              ticketCurrency
-                            )}
-                          </div>
-                        </form>
-                      )}
-
-                      {/* FORM OPSI 2: LELANG NOMINAL POKOK PINJAMAN (KHUSUS KONTRAK 1 & 3) */}
-                      {auctionMode === 'principal' && canAuctionPrincipal && (
-                        <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
-                          <label className="block text-[11px] text-amber-200">
-                            Ajukan Nominal Pokok Pinjaman Baru ({ticketCurrency}):
-                          </label>
-                          <div className="flex gap-2">
-                            <input
-                              type="number"
-                              step="any"
-                              required
-                              value={newRequestedAmount}
-                              onChange={(e) => setNewRequestedAmount(e.target.value)}
-                              placeholder="Nominal pokok baru"
-                              className="flex-1 px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
-                            />
-                            <button
-                              type="submit"
-                              disabled={submittingAuction}
-                              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs"
-                            >
-                              {submittingAuction ? 'Kirim...' : 'Ajukan Nominal'}
-                            </button>
-                          </div>
-                          <div className="text-[11px] text-emerald-300">
-                            Batas{' '}
-                            {ticketContractType === 'micro_unsecured' ? 'Kontrak 1' : 'Kontrak 3'}:{' '}
-                            {formatCurrencyAmount(
-                              convertIdrLimit(
-                                ticketContractType === 'micro_unsecured' ? 100000 : 300000,
-                                ticketCurrency,
-                                liveRates
-                              ),
-                              ticketCurrency
-                            )}{' '}
-                            –{' '}
-                            {formatCurrencyAmount(
-                              convertIdrLimit(
-                                ticketContractType === 'micro_unsecured' ? 500000 : 50000000,
-                                ticketCurrency,
-                                liveRates
-                              ),
-                              ticketCurrency
-                            )}
-                          </div>
-                        </form>
-                      )}
-
-                      {/* FORM OPSI 3: UPGRADE KONTRAK 2 -> KONTRAK 3 */}
-                      {auctionMode === 'upgrade_collateral' && canUpgradeToContract3 && (
-                        <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
-                          <div className="p-2 rounded-lg bg-sky-950/60 border border-sky-700/70 text-[11px] text-sky-200">
-                            Upgrade pengajuan Anda dari <strong>Kontrak 2 (Tanpa Jaminan)</strong> ke{' '}
-                            <strong>Kontrak 3 (Dengan Jaminan)</strong> untuk meningkatkan peluang ACC secara signifikan. Taksiran nilai jaminan akan ditentukan kreditur.
-                          </div>
-                          <div>
-                            <label className="block text-[11px] text-amber-200 mb-1">
-                              Rincian Barang Jaminan *
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={upgradeCollateralDesc}
-                              onChange={(e) => setUpgradeCollateralDesc(e.target.value)}
-                              placeholder="Contoh: HP Xiaomi Redmi Note 13 Pro+ 5G Fullset..."
-                              className="w-full px-3 py-2 rounded-lg bg-[#071510] border border-emerald-800 text-xs text-white"
-                            />
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                            <label className="p-2.5 rounded-lg bg-[#071510] border border-dashed border-sky-600 cursor-pointer">
-                              <span className="block font-semibold text-sky-200">
-                                Foto Jaminan 1 (Utama) *
-                              </span>
-                              <span className="text-[10px] text-emerald-400">
-                                {upgradePhotoCollateral1 ? '✓ Terlampir' : 'Pilih / ambil foto'}
-                              </span>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => handleUpgradeCollateralPhoto(1, e)}
-                                className="hidden"
-                              />
-                            </label>
-                            <label className="p-2.5 rounded-lg bg-[#071510] border border-dashed border-sky-600 cursor-pointer">
-                              <span className="block font-semibold text-sky-200">
-                                Foto Jaminan 2 (Detail/Seri) *
-                              </span>
-                              <span className="text-[10px] text-emerald-400">
-                                {upgradePhotoCollateral2 ? '✓ Terlampir' : 'Pilih / ambil foto'}
-                              </span>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => handleUpgradeCollateralPhoto(2, e)}
-                                className="hidden"
-                              />
-                            </label>
-                          </div>
-                          <button
-                            type="submit"
-                            disabled={submittingAuction}
-                            className="w-full py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs"
-                          >
-                            {submittingAuction
-                              ? 'Memproses Upgrade...'
-                              : 'Upgrade ke Kontrak 3 & Kirim Bukti Jaminan'}
-                          </button>
-                        </form>
-                      )}
                     </div>
                   )}
                 </div>
