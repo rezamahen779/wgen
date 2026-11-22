@@ -455,6 +455,15 @@ export default function LoanApplyPage() {
   const [upgradePhotoCollateral1, setUpgradePhotoCollateral1] = useState('');
   const [upgradePhotoCollateral2, setUpgradePhotoCollateral2] = useState('');
   const [submittingAuction, setSubmittingAuction] = useState(false);
+  // State Respon Setuju / Tolak Nominal Baru dari Kreditur
+  const [respondingRevisedPrincipal, setRespondingRevisedPrincipal] = useState(false);
+
+  // State Form Upload Bukti Drop Barang Jaminan
+  const [showDropProofForm, setShowDropProofForm] = useState(false);
+  const [dropProofPhoto, setDropProofPhoto] = useState('');
+  const [dropProofNote, setDropProofNote] = useState('');
+  const [submittingDropProof, setSubmittingDropProof] = useState(false);
+  const [dropProofSuccessMsg, setDropProofSuccessMsg] = useState('');
   const [auctionSuccessMsg, setAuctionSuccessMsg] = useState('');
 
   const [qrInfo, setQrInfo] = useState(null);
@@ -903,34 +912,19 @@ export default function LoanApplyPage() {
     }
 
     if (auctionMode === 'collateral_value') {
-      const colVal = Number(newCollateralValue);
-      if (isNaN(colVal) || colVal <= currentPrincipal) {
-        setTicketError(
-          `Harga/taksiran barang jaminan wajib LEBIH BESAR dari pokok pinjaman (${formatCurrencyAmount(
-            currentPrincipal,
-            ticketCurrency
-          )}).`
-        );
-        return;
-      }
-
       setSubmittingAuction(true);
       try {
         await resubmitLoanCounterOffer(ticketData.id, currentRewardPct, {
           auctionType: 'collateral_value',
-          collateralValue: colVal,
           collateralDesc: upgradeCollateralDesc.trim() || ticketData.collateral_desc || ''
         });
         setAuctionSuccessMsg(
-          `Penawaran lelang harga jaminan (${formatCurrencyAmount(
-            colVal,
-            ticketCurrency
-          )}) berhasil dikirim! Menunggu verifikasi ulang kreditur.`
+          'Pembaruan rincian barang jaminan berhasil dikirim! Menunggu verifikasi & penaksiran harga oleh kreditur.'
         );
         setShowAuctionForm(false);
         await fetchTicketStatus(ticketData.id);
       } catch (err) {
-        setTicketError(err.message || 'Gagal mengirim penawaran harga jaminan.');
+        setTicketError(err.message || 'Gagal mengirim pembaruan jaminan.');
       } finally {
         setSubmittingAuction(false);
       }
@@ -938,18 +932,8 @@ export default function LoanApplyPage() {
     }
 
     if (auctionMode === 'upgrade_collateral') {
-      const colVal = Number(newCollateralValue);
       if (!upgradeCollateralDesc.trim()) {
         setTicketError('Rincian / keterangan barang jaminan wajib diisi untuk upgrade ke Kontrak 3.');
-        return;
-      }
-      if (isNaN(colVal) || colVal <= currentPrincipal) {
-        setTicketError(
-          `Taksiran harga barang jaminan wajib LEBIH BESAR dari pokok pinjaman (${formatCurrencyAmount(
-            currentPrincipal,
-            ticketCurrency
-          )}).`
-        );
         return;
       }
       if (!upgradePhotoCollateral1 || !upgradePhotoCollateral2) {
@@ -964,12 +948,11 @@ export default function LoanApplyPage() {
           contractType: 'secured_collateral',
           hasCollateral: true,
           collateralDesc: upgradeCollateralDesc.trim(),
-          collateralValue: colVal,
           photoCollateral1: upgradePhotoCollateral1,
           photoCollateral2: upgradePhotoCollateral2
         });
         setAuctionSuccessMsg(
-          'Permintaan Upgrade ke Kontrak 3 (Dengan Jaminan) beserta foto & taksiran harga jaminan berhasil dikirim!'
+          'Permintaan Upgrade ke Kontrak 3 (Dengan Jaminan) beserta foto barang berhasil dikirim! Taksiran nilai akan ditentukan kreditur.'
         );
         setShowAuctionForm(false);
         await fetchTicketStatus(ticketData.id);
@@ -980,7 +963,87 @@ export default function LoanApplyPage() {
       }
     }
   };
+  const handleRespondRevisedPrincipal = async (agreed) => {
+    if (!ticketData?.id) return;
+    const revisedAmt = Number(ticketData.requested_amount || 0);
+    const currentRewardPct = Number(
+      ticketData.reward_percent ||
+        (detectTicketContractType(ticketData) === 'standard_unsecured' ? 20 : 12.5)
+    );
 
+    setRespondingRevisedPrincipal(true);
+    setTicketError('');
+    setAuctionSuccessMsg('');
+    try {
+      await resubmitLoanCounterOffer(ticketData.id, currentRewardPct, {
+        auctionType: agreed ? 'accept_revised_principal' : 'reject_revised_principal',
+        requestedAmount: revisedAmt,
+        agreedRevisedPrincipal: agreed
+      });
+      setAuctionSuccessMsg(
+        agreed
+          ? `Anda MENYETUJUI nominal pinjaman baru sebesar ${formatCurrencyAmount(
+              revisedAmt,
+              ticketData.currency
+            )}. Silakan drop barang jaminan ke alamat yang diinstruksikan lalu kirim bukti drop.`
+          : `Anda MENOLAK nominal baru ${formatCurrencyAmount(
+              revisedAmt,
+              ticketData.currency
+            )}. Anda bisa mengajukan penawaran lelang baru di menu negosiasi.`
+      );
+      await fetchTicketStatus(ticketData.id);
+    } catch (err) {
+      setTicketError(err.message || 'Gagal mengirim respon nominal pinjaman baru.');
+    } finally {
+      setRespondingRevisedPrincipal(false);
+    }
+  };
+
+  const handleDropProofPhotoChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressed = await compressImageToBase64(file);
+      setDropProofPhoto(compressed);
+    } catch (err) {
+      setTicketError(err.message || 'Gagal memproses foto bukti drop jaminan.');
+    }
+  };
+
+  const handleSubmitDropProof = async (e) => {
+    e.preventDefault();
+    if (!ticketData?.id) return;
+    if (!dropProofPhoto) {
+      setTicketError('Foto bukti drop / serah terima barang jaminan wajib dilampirkan.');
+      return;
+    }
+
+    setSubmittingDropProof(true);
+    setTicketError('');
+    setDropProofSuccessMsg('');
+    try {
+      await resubmitLoanCounterOffer(
+        ticketData.id,
+        Number(ticketData.reward_percent || 12.5),
+        {
+          auctionType: 'collateral_drop_proof',
+          collateralDropProofPhoto: dropProofPhoto,
+          collateralDropProofNote: dropProofNote.trim()
+        }
+      );
+      setShowDropProofForm(false);
+      setDropProofPhoto('');
+      setDropProofNote('');
+      setDropProofSuccessMsg(
+        'Bukti drop barang jaminan berhasil dikirim ke sistem! Menunggu pengecekan & konfirmasi serah terima oleh kreditur.'
+      );
+      await fetchTicketStatus(ticketData.id);
+    } catch (err) {
+      setTicketError(err.message || 'Gagal mengirim bukti drop barang jaminan.');
+    } finally {
+      setSubmittingDropProof(false);
+    }
+  };
   const numericAmount = Number(form.requestedAmount) || 0;
   const rewardPct = Math.max(0, Number(form.rewardPercent) || 0);
   const rewardAmount = (numericAmount * rewardPct) / 100;
@@ -1355,6 +1418,16 @@ export default function LoanApplyPage() {
                 </div>
               )}
 
+             {dropProofSuccessMsg && (
+            <div className="p-3 rounded-lg bg-sky-950/80 border border-sky-500 text-xs text-sky-200 leading-relaxed">
+              {dropProofSuccessMsg}
+            </div>
+          )}
+
+          {ticketData && (
+            <div className="bg-[#071510] border border-emerald-800/80 rounded-xl p-4 space-y-4 text-xs">
+              {/* ... bagian atas ticketData tetap sama ... */}
+
               {ticketData.collateral_feedback && (
                 <div className="p-3.5 rounded-xl bg-[#0c2119] border border-sky-600/70 space-y-2">
                   <div className="font-semibold text-sky-300">
@@ -1384,6 +1457,45 @@ export default function LoanApplyPage() {
                   <p className="text-red-100 leading-relaxed">{ticketData.rejection_reason}</p>
                 </div>
               )}
+
+              {status === 'counter_offer' &&
+                !ticketData.agreedRevisedPrincipal &&
+                !String(ticketData.rejection_reason || '').includes('[DISETUJUI_NOMINAL_BARU]') && (
+                  <div className="p-3.5 rounded-xl bg-emerald-950/50 border border-emerald-600/80 space-y-2.5">
+                    <div className="font-semibold text-emerald-300">
+                      Konfirmasi Penawaran Nominal Pokok Pinjaman Terbaru
+                    </div>
+                    <p className="text-[11px] text-emerald-100/85 leading-relaxed">
+                      Nominal pinjaman saat ini tercatat{' '}
+                      <strong className="text-white">
+                        {formatCurrencyAmount(ticketData.requested_amount, ticketData.currency)}
+                      </strong>
+                      . Apakah Anda setuju dengan nominal tersebut untuk melanjutkan proses?
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={respondingRevisedPrincipal}
+                        onClick={() => handleRespondRevisedPrincipal(true)}
+                        className="flex-1 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold text-[11px]"
+                      >
+                        {respondingRevisedPrincipal ? 'Memproses...' : '✓ Setuju Nominal Baru'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={respondingRevisedPrincipal}
+                        onClick={() => handleRespondRevisedPrincipal(false)}
+                        className="py-2 px-3 rounded-lg bg-red-950/80 hover:bg-red-900 border border-red-700 disabled:opacity-50 text-red-200 font-semibold text-[11px]"
+                      >
+                        ✕ Tolak
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+              {/* ... bagian bawah ticketData (Sistem Lelang) tetap sama ... */}
+            </div>
+          )}
 
               {/* SISTEM LELANG & NEGOSIASI MULTI-OPSI */}
               {isNegotiableStatus && (
