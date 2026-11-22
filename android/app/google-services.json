@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "438908630210",
+    "project_id": "wgen-note",
+    "storage_bucket": "wgen-note.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:438908630210:android:309c69f59cab6c0915775b",
+        "android_client_info": {
+          "package_name": "com.zdwgen.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "438908630210-s34179j1hr5qum754vti0v561ueo7i7u.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.zdwgen.app",
+            "certificate_hash": "c4969fbd9059686c648268107ea7fa30780e9b8b"
+          }
+        },
+        {
+          "client_id": "438908630210-3rsarub0qakv1fq8b0f1pmde67076qm0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD9UQdFqlnx2rkuDEy-zRxib-3LRggCsbo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "438908630210-3rsarub0qakv1fq8b0f1pmde67076qm0.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

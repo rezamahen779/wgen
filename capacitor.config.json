@@ -1,0 +1,15 @@
+{
+  "appId": "com.zdwgen.app",
+  "appName": "WGen Note",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "http"
+  },
+  "plugins": {
+    "GoogleAuth": {
+      "scopes": ["profile", "email"],
+      "serverClientId": "1051870668140-r8fn7capvcftk89g4u5ibjafcf81qok1.apps.googleusercontent.com",
+      "forceCodeForRefreshToken": true
+    }
+  }
+}

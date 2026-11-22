@@ -1,0 +1,153 @@
+/* ==========================================
+   1. RESET & LAYOUT DASAR (Aplikasi Full 100%)
+   ========================================== */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 90%;
+  height: 80dvh;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg-main: #ffffff;
+  --text-main: #111827;
+  --modal-bg: #f9fafb; /* Warna modal mode light */
+  --overlay-bg: rgba(0, 0, 0, 0.5); /* Latar transparan di belakang modal */
+  --z-toast: 999999;
+  --z-modal: 9980;
+  --z-header: 9900;
+}
+
+.dark {
+  --bg-main: #0F1020;
+  --text-main: #f3f4f6;
+  --modal-bg: #1A1C2E; /* Warna modal mode dark (sinkron dengan background) */
+  --overlay-bg: rgba(0, 0, 0, 0.7);
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  overscroll-behavior-y: none;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Container utama aplikasi TETAP 100% full screen */
+.app-container {
+  position: relative;
+  width: 90%;
+  height: 80dvh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+
+/* ==========================================
+   2. MODAL & POPUP (DIJAMIN AMAN DARI STATUS BAR)
+   ========================================== */
+.modal-overlay {
+  position: floating;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 90dvh;
+  background-color: var(--overlay-bg);
+  z-index: var(--z-modal);
+  
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  /* KUNCI UTAMA: Paksa jarak kosong di atas agar modal tertolak ke bawah */
+  padding-top: calc(60px + env(safe-area-inset-top, 0px)); 
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  padding-left: 16px;
+  padding-right: 16px;
+  box-sizing: border-box;
+}
+
+.modal-container {
+  position: relative;
+  width: 90%;
+  max-width: 500px;
+  
+  /* Modal akan mengisi sisa ruang yang ada, tapi tidak melampaui padding overlay */
+  max-height: 100%; 
+  
+  background-color: var(--modal-bg);
+  border-radius: 16px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+
+/* ==========================================
+   3. HEADER MODAL & TOMBOL CLOSE
+   ========================================== */
+.modal-header {
+  position: relative;
+  width: 90%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  background-color: var(--modal-bg);
+  border-bottom: 1px solid rgba(128, 128, 128, 0.1); /* Garis batas tipis */
+  z-index: var(--z-header);
+  box-sizing: border-box;
+  flex-shrink: 0; /* Header tidak ikut ter-scroll */
+}
+
+.close-button-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Tombol close kini berada di dalam alur header modal */
+.btn-close {
+  position: relative;
+  min-width: 40px;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  background: rgba(128, 128, 128, 0.15);
+  border-radius: 50%;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  
+  pointer-events: auto;
+  touch-action: manipulation;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+
+/* ==========================================
+   4. TOAST PERINGATAN (NOTIFICATION TOAST)
+   ========================================== */
+.toast-container {
+  position: fixed;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90%;
+  max-width: 400px;
+  z-index: var(--z-toast);
+  box-sizing: border-box;
+  pointer-events: auto;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}

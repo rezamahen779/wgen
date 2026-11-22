@@ -1,8 +1,8 @@
 import { 
   Utensils, Bus, Users, Home, Zap, Droplets, Flame, Wifi, 
-  HeartPulse, GraduationCap, TrendingUp, Plane, Gamepad2, 
+  HeartPulse, GraduationCap, TrendingUp, Plane, Gamepad2, HandHeart, Sparkles,
   ShoppingBag, Shield, Receipt, Briefcase, Gift, DollarSign, HelpCircle,
-  Laptop, Building2, Coins, Car, Award, CreditCard, Landmark
+  Laptop, Building2, Coins, Car, Award, CreditCard,
 } from 'lucide-react';
 
 // 1. DICTIONARY UTAMA: Pemetaan Key Standar Netral (English Canonical Key)
@@ -22,6 +22,8 @@ export const CATEGORY_MAP = {
   'shopping': { id: "Belanja", jp: "ショッピング", en: "Shopping", ar: "تسوق", cn: "购物" },
   'insurance': { id: "Asuransi", jp: "保険", en: "Insurance", ar: "تأمين", cn: "保险" },
   'tax': { id: "Pajak", jp: "税金", en: "Tax", ar: "ضرائب", cn: "税" },
+  'social': {id:"Sosial", jp: "社会", en: "Social", ar: "اجتماعي", cn: " 社交" },
+  'self care': {id:"Perawatan diri", jp:"セルフケア", en: "Self care", ar: "العناية الذاتية", cn: "自我护理" },
 
   // --- OVERLAP (Bisa Rutin & Asset) ---
   'investment': { id: "Investasi", jp: "投資", en: "Investment", ar: "استثمار", cn: "投资" },
@@ -49,31 +51,31 @@ export const CATEGORY_MAP = {
 // Daftar Opsi Kategori Berdasarkan 4 Klasifikasi Baru
 export const CATEGORIES_BY_LANG = {
   id: {
-    expenseRoutine: ["Makan dan minum", "Transportasi", "Keluarga", "Rumah", "Tagihan Listrik", "Tagihan Air", "Tagihan Gas", "Tagihan Internet", "Kesehatan", "Edukasi", "Investasi", "Traveling", "Hiburan", "Belanja", "Elektronik", "Asuransi", "Pajak"],
+    expenseRoutine: ["Makan dan minum", "Transportasi", "Keluarga", "Rumah", "Tagihan Listrik", "Tagihan Air", "Tagihan Gas", "Tagihan Internet", "Kesehatan", "Edukasi", "Investasi", "Hiburan", "Belanja", "Elektronik", "Asuransi", "Pajak", "Sosial", "Perawatan diri"],
     expenseAsset: ["Properti", "Elektronik", "Investasi", "Gold", "Bisnis", "Traveling", "Kendaraan"],
     incomeRoutine: ["Gaji", "Bisnis", "Investasi", "Freelance"],
     incomeAsset: ["Bonus", "Freelance", "Investasi", "Gold", "Hutang", "Hadiah"]
   },
   jp: {
-    expenseRoutine: ["飲食", "交通費", "家族", "住まい", "電気代", "水道代", "ガス代", "インターネット代", "医療", "教育", "投資", "旅行", "エンタメ", "ショッピング", "家電・電子機器", "保険", "税金"],
+    expenseRoutine: ["飲食", "交通費", "家族", "住まい", "電気代", "水道代", "ガス代", "インターネット代", "医療", "教育", "投資", "エンタメ", "ショッピング", "家電・電子機器", "保険", "税金", "社会",  "セルフケア"],
     expenseAsset: ["不動産", "家電・電子機器", "投資", "金", "事業", "旅行", "乗り物"],
     incomeRoutine: ["給与", "事業", "投資", "フリーランス"],
     incomeAsset: ["ボーナス", "フリーランス", "投資", "金", "借入", "ギフト"]
   },
   en: {
-    expenseRoutine: ["Food & Drinks", "Transportation", "Family", "Home", "Electricity-Bill", "Water-Bill", "Gas-Bill", "Internet-Bill", "Health", "Education", "Investment", "Traveling", "Entertainment", "Shopping", "Electronics", "Insurance", "Tax"],
+    expenseRoutine: ["Food & Drinks", "Transportation", "Family", "Home", "Electricity-Bill", "Water-Bill", "Gas-Bill", "Internet-Bill", "Health", "Education", "Investment", "Entertainment", "Shopping", "Electronics", "Insurance", "Tax", "Social", "Self care"],
     expenseAsset: ["Property", "Electronics", "Investment", "Gold", "Business", "Traveling", "Vehicle"],
     incomeRoutine: ["Salary", "Business", "Investment", "Freelance"],
     incomeAsset: ["Bonus", "Freelance", "Investment", "Gold", "Loan", "Gift"]
   },
   ar: {
-    expenseRoutine: ["طعام وشراب", "مواصلات", "عائلة", "منزل", "فاتورة الكهرباء", "فاتورة المياه", "فاتورة الغاز", "فاتورة الإنترنت", "صحة", "تعليم", "استثمار", "سفر", "ترفيه", "تسوق", "إلكترونيات", "تأمين", "ضرائب"],
+    expenseRoutine: ["طعام وشراب", "مواصلات", "عائلة", "منزل", "فاتورة الكهرباء", "فاتورة المياه", "فاتورة الغاز", "فاتورة الإنترنت", "صحة", "تعليم", "استثمار", "ترفيه", "تسوق", "إلكترونيات", "تأمين", "ضرائب", "اجتماعي", "العناية الذاتية"],
     expenseAsset: ["عقارات", "إلكترونيات", "استثمار", "ذهب", "أعمال", "سفر", "مركبات"],
     incomeRoutine: ["راتب", "أعمال", "استثمار", "عمل حُر"],
     incomeAsset: ["مكافأة", "عمل حُر", "استثمار", "ذهب", "قرض", "هدية"]
   },
   cn: {
-    expenseRoutine: ["餐饮", "交通", "家庭", "住房", "电费账单", "水费账单", "燃气账单", "网络账单", "医疗", "教育", "投资", "旅游", "娱乐", "购物", "电子产品", "保险", "税"],
+    expenseRoutine: ["餐饮", "交通", "家庭", "住房", "电费账单", "水费账单", "燃气账单", "网络账单", "医疗", "教育", "投资", "娱乐", "购物", "电子产品", "保险", "税", "社交", "自我护理"],
     expenseAsset: ["房产", "电子产品", "投资", "黄金", "商业", "旅游", "车辆"],
     incomeRoutine: ["薪水", "商业", "投资", "兼职"],
     incomeAsset: ["奖金", "兼职", "投资", "黄金", "借款", "礼物"]
@@ -104,19 +106,22 @@ const CATEGORY_ICONS = {
   "kesehatan": HeartPulse, "health": HeartPulse, "医療": HeartPulse, "صحة": HeartPulse, "医疗": HeartPulse,
   "edukasi": GraduationCap, "education": GraduationCap, "教育": GraduationCap, "تعليم": GraduationCap,
   "investasi": TrendingUp, "investment": TrendingUp, "投資": TrendingUp, "استثمار": TrendingUp, "投资": TrendingUp,
-  "traveling": Plane, "旅行": Plane, "سفر": Plane, "旅游": Plane,
   "hiburan": Gamepad2, "entertainment": Gamepad2, "エンタメ": Gamepad2, "ترفيه": Gamepad2, "娱乐": Gamepad2,
   "belanja": ShoppingBag, "shopping": ShoppingBag, "ショッピング": ShoppingBag, "تسوق": ShoppingBag, "购物": ShoppingBag,
   "asuransi": Shield, "insurance": Shield, "保険": Shield, "تأمين": Shield, "保险": Shield,
   "pajak": Receipt, "tax": Receipt, "税金": Receipt, "ضرائب": Receipt, "税": Receipt,
   "elektronik": Laptop, "electronics": Laptop, "家電・電子機器": Laptop, "إلكترونيات": Laptop, "电子产品": Laptop,
+  "sosial" : HandHeart, "social": HandHeart, "社会": HandHeart,  "اجتماعي": HandHeart, "社交": HandHeart,
+  "perawatan diri" : Sparkles, "self care" : Sparkles,  "セルフケア" : Sparkles, "العناية الذاتية" : Sparkles, "自我护理" : Sparkles,
 
   // Non-Operational / Asset Expenses
   "properti": Building2, "property": Building2, "不動産": Building2, "عقارات": Building2, "房产": Building2,
   "gold": Coins, "金": Coins, "ذهب": Coins, "黄金": Coins,
   "bisnis": Briefcase, "business": Briefcase, "事業": Briefcase, "أعمال": Briefcase, "商业": Briefcase,
   "kendaraan": Car, "vehicle": Car, "乗り物": Car, "مركبات": Car, "车辆": Car,
-
+  "investasi": TrendingUp, "investment": TrendingUp, "投資": TrendingUp, "استثمار": TrendingUp, "投资": TrendingUp,
+  "traveling" : Plane, "旅行": Plane, "سفر": Plane, "旅游": Plane,
+  
   // Income
   "gaji": DollarSign, "salary": DollarSign, "給与": DollarSign, "راتب": DollarSign, "薪水": DollarSign,
   "freelance": Briefcase, "フリーランス": Briefcase, "عمل حُر": Briefcase, "兼职": Briefcase,

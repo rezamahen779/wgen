@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">WGen Note</string>
+    <string name="title_activity_main">WGen Note</string>
+    <string name="package_name">com.zdwgen.app</string>
+    <string name="custom_url_scheme">com.zdwgen.app</string>
+    <string name="default_web_client_id">1051870668140-r8fn7capvcftk89g4u5ibjafcf81qok1.apps.googleusercontent.com</string>
+</resources>

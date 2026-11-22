@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-gray-100 text-gray-900 dark:bg-gray-950 dark:text-gray-100;
+}
+
+/* Definisi Warna Tema Two-Tone Dinamis Berdasarkan Root HTML */
+html.theme-emerald { --theme-color: #059669; --theme-hover: #047857; }
+html.theme-blue { --theme-color: #2563eb; --theme-hover: #1d4ed8; }
+html.theme-violet { --theme-color: #7c3aed; --theme-hover: #6d28d9; }
+html.theme-amber { --theme-color: #d97706; --theme-hover: #b45309; }
+html.theme-rose { --theme-color: #e11d48; --theme-hover: #be123c; }
+
+/* Terapkan otomatis ke teks & tombol berdasar tema aktif */
+.theme-text { color: var(--theme-color) !important; }
+.theme-bg { background-color: var(--theme-color) !important; color: #ffffff !important; }
+.theme-bg:hover { background-color: var(--theme-hover) !important; }
+.theme-border { border-color: var(--theme-color) !important; }
