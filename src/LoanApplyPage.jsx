@@ -56,6 +56,38 @@ function formatCurrencyAmount(amount, currencyCode) {
     : num.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   return `${symbol} ${formatted}`;
 }
+// Format tampilan angka dengan pemisah ribuan titik (.) dan desimal koma (,) saat mengetik
+function formatNumberInputDisplay(rawNumericStr, currencyCode) {
+  if (rawNumericStr === '' || rawNumericStr === null || rawNumericStr === undefined) return '';
+  const code = (currencyCode || 'IDR').toUpperCase();
+  const zeroDecimalCodes = ['IDR', 'JPY', 'KRW'];
+  const str = String(rawNumericStr);
+  const [intPart, decPart] = str.split('.');
+  const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+  if (!zeroDecimalCodes.includes(code) && decPart !== undefined) {
+    return `${formattedInt},${decPart.slice(0, 2)}`;
+  }
+  return formattedInt;
+}
+
+// Ubah teks berformat titik/koma kembali ke string angka murni (misal "1.500.000" -> "1500000")
+function parseNumberInputToRaw(inputStr, currencyCode) {
+  const code = (currencyCode || 'IDR').toUpperCase();
+  const zeroDecimalCodes = ['IDR', 'JPY', 'KRW'];
+
+  if (zeroDecimalCodes.includes(code)) {
+    return inputStr.replace(/[^0-9]/g, '').replace(/^0+(?=\d)/, '');
+  }
+
+  let cleaned = inputStr.replace(/\./g, '').replace(/[^0-9,]/g, '');
+  const parts = cleaned.split(',');
+  const intPart = (parts[0] || '').replace(/^0+(?=\d)/, '');
+  if (parts.length > 1) {
+    return `${intPart || '0'},${parts[1].slice(0, 2)}`.replace(',', '.');
+  }
+  return intPart;
+}
 
 // Konversi nominal batas IDR ke mata uang target dengan pembulatan bersih
 function convertIdrLimit(idrAmount, targetCurrency, rates) {
@@ -624,7 +656,8 @@ export default function LoanApplyPage() {
 
   const formatMoney = (val) => formatCurrencyAmount(val, form.currency);
 
-  const handleAmountChange = (rawVal) => {
+  const handleAmountChange = (inputText) => {
+    const rawVal = parseNumberInputToRaw(inputText, form.currency);
     if (rawVal === '') {
       setForm((prev) => ({ ...prev, requestedAmount: '' }));
       return;
@@ -1721,8 +1754,7 @@ export default function LoanApplyPage() {
       </div>
     );
   }
-
-  // =========================================================================
+// =========================================================================
   // TAMPILAN 4: FORMULIR PENGAJUAN PINJAMAN PUBLIK LENGKAP
   // =========================================================================
   return (
@@ -1970,15 +2002,13 @@ export default function LoanApplyPage() {
                   Nominal Pokok ({form.currency} — Maks {formatMoney(contractLimits.max)}) *
                 </label>
                 <input
-                  type="number"
-                  min={contractLimits.min}
-                  max={contractLimits.max}
-                  step="any"
+                  type="text"
+                  inputMode="decimal"
                   required
-                  value={form.requestedAmount}
+                  value={formatNumberInputDisplay(form.requestedAmount, form.currency)}
                   onChange={(e) => handleAmountChange(e.target.value)}
-                  placeholder={`Min ${contractLimits.min} – Maks ${contractLimits.max}`}
-                  className="w-full px-3 py-2.5 rounded-lg bg-[#071510] border border-emerald-800 text-sm text-white focus:outline-none focus:border-emerald-500"
+                  placeholder={`Min ${formatNumberInputDisplay(contractLimits.min, form.currency)} – Maks ${formatNumberInputDisplay(contractLimits.max, form.currency)}`}
+                  className="w-full px-3 py-2.5 rounded-lg bg-[#071510] border border-emerald-800 text-sm text-white font-mono focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
@@ -2088,12 +2118,12 @@ export default function LoanApplyPage() {
                 </div>
                 <div className="text-emerald-100/80">• Grace Period: 1 hari kalender setelah jatuh tempo (denda mulai H+2).</div>
                 <div className="text-emerald-100/80">
-                  - Periode Awal: {penaltyInfo.firstPeriod}{' '}
+                  • Periode Awal: {penaltyInfo.firstPeriod}{' '}
                   {numericAmount > 0 && <strong className="text-amber-200">({formatMoney(penaltyInfo.estFirstPenalty)})</strong>}
                 </div>
                 <div className="text-emerald-100/80">• Periode Lanjutan: {penaltyInfo.nextPeriod}</div>
                 <div className="text-emerald-100/80">
-                  - Batas Maksimal Denda: {penaltyInfo.maxCap}{' '}
+                  • Batas Maksimal Denda: {penaltyInfo.maxCap}{' '}
                   {numericAmount > 0 && <strong className="text-amber-200">(Maks {formatMoney(penaltyInfo.estMaxPenalty)})</strong>}
                 </div>
               </div>
