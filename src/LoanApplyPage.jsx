@@ -458,14 +458,12 @@ export default function LoanApplyPage() {
   // State Respon Setuju / Tolak Nominal Baru dari Kreditur
   const [respondingRevisedPrincipal, setRespondingRevisedPrincipal] = useState(false);
 
-  // State Form Upload Bukti Drop Barang Jaminan
+  // State Form Upload Bukti Drop Barang Jaminan (khusus saat kreditur memberi instruksi drop)
   const [showDropProofForm, setShowDropProofForm] = useState(false);
   const [dropProofPhoto, setDropProofPhoto] = useState('');
   const [dropProofNote, setDropProofNote] = useState('');
   const [submittingDropProof, setSubmittingDropProof] = useState(false);
   const [dropProofSuccessMsg, setDropProofSuccessMsg] = useState('');
-  const [auctionSuccessMsg, setAuctionSuccessMsg] = useState('');
-
   const [qrInfo, setQrInfo] = useState(null);
   const [loadingToken, setLoadingToken] = useState(Boolean(tokenParam));
   const [tokenError, setTokenError] = useState('');
@@ -999,7 +997,7 @@ export default function LoanApplyPage() {
     }
   };
 
-  const handleDropProofPhotoChange = async (e) => {
+ const handleDropProofPhotoChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
@@ -1035,7 +1033,7 @@ export default function LoanApplyPage() {
       setDropProofPhoto('');
       setDropProofNote('');
       setDropProofSuccessMsg(
-        'Bukti drop barang jaminan berhasil dikirim ke sistem! Menunggu pengecekan & konfirmasi serah terima oleh kreditur.'
+        'Bukti drop barang jaminan berhasil dikirim! Menunggu pengecekan & konfirmasi oleh kreditur.'
       );
       await fetchTicketStatus(ticketData.id);
     } catch (err) {
@@ -1424,80 +1422,310 @@ export default function LoanApplyPage() {
             </div>
           )}
 
-          {ticketData && (
-            <div className="bg-[#071510] border border-emerald-800/80 rounded-xl p-4 space-y-4 text-xs">
-              {/* ... bagian atas ticketData tetap sama ... */}
+          {ticketData.collateral_feedback && (
+            <div className="p-3.5 rounded-xl bg-[#0c2119] border border-sky-600/70 space-y-2.5">
+              <div className="font-semibold text-sky-300">
+                Status & Instruksi Serah Terima Jaminan:
+              </div>
+              <p className="text-emerald-100 leading-relaxed whitespace-pre-line">
+                {ticketData.collateral_feedback}
+              </p>
 
-              {ticketData.collateral_feedback && (
-                <div className="p-3.5 rounded-xl bg-[#0c2119] border border-sky-600/70 space-y-2">
-                  <div className="font-semibold text-sky-300">
-                    Status & Instruksi Serah Terima Jaminan:
-                  </div>
-                  <p className="text-emerald-100 leading-relaxed whitespace-pre-line">
-                    {ticketData.collateral_feedback}
-                  </p>
-                  {!ticketData.collateral_feedback.includes('BARANG JAMINAN DITERIMA') && (
-                    <a
-                      href={`https://wa.me/?text=${encodeURIComponent(
-                        `Halo, saya ${ticketData.borrower_name} (Tiket: ${ticketData.id}). Barang jaminan (${ticketData.collateral_desc}) sudah saya antar/kirim ke alamat drop-off sesuai instruksi. Mohon dicek ya.`
-                      )}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-block mt-1 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-[11px]"
+              {!ticketData.collateral_feedback.includes('BARANG JAMINAN DITERIMA') && (
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowDropProofForm((prev) => !prev)}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-[11px]"
+                  >
+                    {showDropProofForm ? 'Tutup Form Bukti Drop' : 'Upload Bukti Drop Jaminan'}
+                  </button>
+
+                  <a
+                    href={`https://wa.me/?text=${encodeURIComponent(
+                      `Halo, saya ${ticketData.borrower_name} (Tiket: ${ticketData.id}). Barang jaminan (${ticketData.collateral_desc}) sudah saya antar/kirim ke alamat drop-off sesuai instruksi. Mohon dicek ya.`
+                    )}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-[11px]"
+                  >
+                    Konfirmasi via WhatsApp
+                  </a>
+                </div>
+              )}
+
+              {showDropProofForm &&
+                !ticketData.collateral_feedback.includes('BARANG JAMINAN DITERIMA') && (
+                  <form
+                    onSubmit={handleSubmitDropProof}
+                    className="p-3 rounded-lg bg-[#071510] border border-sky-700 space-y-2.5 text-[11px] mt-2"
+                  >
+                    <div className="font-semibold text-sky-300">
+                      Form Upload Bukti Drop Barang Jaminan
+                    </div>
+
+                    <label className="p-2.5 rounded-lg bg-[#0c2119] border border-dashed border-sky-600 cursor-pointer flex items-center justify-between">
+                      <span className="text-sky-100">
+                        {dropProofPhoto
+                          ? '✓ Foto Bukti Drop Terlampir'
+                          : 'Foto Bukti Barang Diantar / Drop *'}
+                      </span>
+                      <span className="text-sky-400 underline">Pilih Foto</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleDropProofPhotoChange}
+                        className="hidden"
+                      />
+                    </label>
+
+                    <div>
+                      <label className="block text-emerald-200/80 mb-1">
+                        Catatan Tambahan (Jam antar, titip ke siapa, dll)
+                      </label>
+                      <input
+                        type="text"
+                        value={dropProofNote}
+                        onChange={(e) => setDropProofNote(e.target.value)}
+                        placeholder="Contoh: Diantar jam 15.00 / dititip di pos..."
+                        className="w-full px-2.5 py-1.5 rounded bg-[#0c2119] border border-emerald-800 text-white"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={submittingDropProof}
+                      className="w-full py-2 rounded-lg bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-semibold"
                     >
-                      Konfirmasi Barang Sudah Diantar via WhatsApp
-                    </a>
-                  )}
-                </div>
-              )}
-
-              {ticketData.rejection_reason && (
-                <div className="p-3 rounded-lg bg-red-950/40 border border-red-800/70 space-y-1">
-                  <div className="font-semibold text-red-300">Keterangan Kreditur:</div>
-                  <p className="text-red-100 leading-relaxed">{ticketData.rejection_reason}</p>
-                </div>
-              )}
-
-              {status === 'counter_offer' &&
-                !ticketData.agreedRevisedPrincipal &&
-                !String(ticketData.rejection_reason || '').includes('[DISETUJUI_NOMINAL_BARU]') && (
-                  <div className="p-3.5 rounded-xl bg-emerald-950/50 border border-emerald-600/80 space-y-2.5">
-                    <div className="font-semibold text-emerald-300">
-                      Konfirmasi Penawaran Nominal Pokok Pinjaman Terbaru
-                    </div>
-                    <p className="text-[11px] text-emerald-100/85 leading-relaxed">
-                      Nominal pinjaman saat ini tercatat{' '}
-                      <strong className="text-white">
-                        {formatCurrencyAmount(ticketData.requested_amount, ticketData.currency)}
-                      </strong>
-                      . Apakah Anda setuju dengan nominal tersebut untuk melanjutkan proses?
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        disabled={respondingRevisedPrincipal}
-                        onClick={() => handleRespondRevisedPrincipal(true)}
-                        className="flex-1 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold text-[11px]"
-                      >
-                        {respondingRevisedPrincipal ? 'Memproses...' : '✓ Setuju Nominal Baru'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={respondingRevisedPrincipal}
-                        onClick={() => handleRespondRevisedPrincipal(false)}
-                        className="py-2 px-3 rounded-lg bg-red-950/80 hover:bg-red-900 border border-red-700 disabled:opacity-50 text-red-200 font-semibold text-[11px]"
-                      >
-                        ✕ Tolak
-                      </button>
-                    </div>
-                  </div>
+                      {submittingDropProof ? 'Mengirim Bukti...' : 'Kirim Bukti Drop Jaminan'}
+                    </button>
+                  </form>
                 )}
-
-              {/* ... bagian bawah ticketData (Sistem Lelang) tetap sama ... */}
             </div>
           )}
 
-              {/* SISTEM LELANG & NEGOSIASI MULTI-OPSI */}
+          {ticketData.rejection_reason && (
+            <div className="p-3 rounded-lg bg-red-950/40 border border-red-800/70 space-y-1">
+              <div className="font-semibold text-red-300">Keterangan Kreditur:</div>
+              <p className="text-red-100 leading-relaxed">{ticketData.rejection_reason}</p>
+            </div>
+          )}
+
+          {/* SISTEM LELANG & NEGOSIASI DEBITUR (TANPA LELANG HARGA JAMINAN) */}
+          {isNegotiableStatus && (
+            <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-600/70 space-y-3">
+              <div className="font-semibold text-amber-300">
+                Sistem Lelang & Negosiasi Pengajuan
+              </div>
+              <p className="text-[11px] text-amber-100/85 leading-relaxed">
+                Ajukan penawaran ulang tanpa perlu mengisi ulang data KTP/selfie. Pilih opsi yang tersedia untuk kontrak Anda:
+              </p>
+
+              {!showAuctionForm ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuctionMode('reward');
+                    setShowAuctionForm(true);
+                  }}
+                  className="w-full py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs"
+                >
+                  Buka Menu Lelang & Negosiasi Penawaran
+                </button>
+              ) : (
+                <div className="space-y-3 pt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setAuctionMode('reward')}
+                      className={`px-2.5 py-2 rounded-lg border text-left font-semibold ${
+                        auctionMode === 'reward'
+                          ? 'bg-amber-600/30 border-amber-400 text-amber-200'
+                          : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
+                      }`}
+                    >
+                      1. Lelang Imbalan Jasa (%)
+                    </button>
+
+                    {canAuctionPrincipal && (
+                      <button
+                        type="button"
+                        onClick={() => setAuctionMode('principal')}
+                        className={`px-2.5 py-2 rounded-lg border text-left font-semibold ${
+                          auctionMode === 'principal'
+                            ? 'bg-amber-600/30 border-amber-400 text-amber-200'
+                            : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
+                        }`}
+                      >
+                        2. Lelang Nominal Pokok
+                      </button>
+                    )}
+
+                    {canUpgradeToContract3 && (
+                      <button
+                        type="button"
+                        onClick={() => setAuctionMode('upgrade_collateral')}
+                        className={`px-2.5 py-2 rounded-lg border text-left font-semibold sm:col-span-2 ${
+                          auctionMode === 'upgrade_collateral'
+                            ? 'bg-sky-600/30 border-sky-400 text-sky-200'
+                            : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
+                        }`}
+                      >
+                        ★ Upgrade ke Kontrak 3 (Dengan Jaminan)
+                      </button>
+                    )}
+                  </div>
+
+                  {/* 1. LELANG IMBALAN JASA */}
+                  {auctionMode === 'reward' && (
+                    <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
+                      <label className="block text-[11px] text-amber-200">
+                        Masukkan Penawaran Imbalan Jasa Baru (%){' '}
+                        {ticketContractType === 'standard_unsecured' ? '(Maks 20%)' : ''}:
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max={ticketContractType === 'standard_unsecured' ? '20' : '100'}
+                          required
+                          value={newRewardPercent}
+                          onChange={(e) => setNewRewardPercent(e.target.value)}
+                          className="flex-1 px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
+                        />
+                        <button
+                          type="submit"
+                          disabled={submittingAuction}
+                          className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs"
+                        >
+                          {submittingAuction ? 'Kirim...' : 'Kirim Penawaran'}
+                        </button>
+                      </div>
+                      <div className="text-[11px] text-emerald-300">
+                        Estimasi Hadiah Baru:{' '}
+                        {formatCurrencyAmount(
+                          (ticketPrincipal * (Number(newRewardPercent) || 0)) / 100,
+                          ticketCurrency
+                        )}
+                      </div>
+                    </form>
+                  )}
+
+                  {/* 2. LELANG NOMINAL POKOK (SESUAI BATAS KONTRAK) */}
+                  {auctionMode === 'principal' && canAuctionPrincipal && (
+                    <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
+                      <label className="block text-[11px] text-amber-200">
+                        Ajukan Nominal Pokok Pinjaman Baru ({ticketCurrency}):
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          step="any"
+                          required
+                          value={newRequestedAmount}
+                          onChange={(e) => setNewRequestedAmount(e.target.value)}
+                          placeholder="Nominal pokok baru"
+                          className="flex-1 px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
+                        />
+                        <button
+                          type="submit"
+                          disabled={submittingAuction}
+                          className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs"
+                        >
+                          {submittingAuction ? 'Kirim...' : 'Ajukan Nominal'}
+                        </button>
+                      </div>
+                      <div className="text-[11px] text-emerald-300">
+                        Batas{' '}
+                        {ticketContractType === 'micro_unsecured' ? 'Kontrak 1' : 'Kontrak 3'}:{' '}
+                        {formatCurrencyAmount(
+                          convertIdrLimit(
+                            ticketContractType === 'micro_unsecured' ? 100000 : 300000,
+                            ticketCurrency,
+                            liveRates
+                          ),
+                          ticketCurrency
+                        )}{' '}
+                        –{' '}
+                        {formatCurrencyAmount(
+                          convertIdrLimit(
+                            ticketContractType === 'micro_unsecured' ? 500000 : 50000000,
+                            ticketCurrency,
+                            liveRates
+                          ),
+                          ticketCurrency
+                        )}
+                      </div>
+                    </form>
+                  )}
+
+                  {/* 3. UPGRADE KONTRAK 2 -> KONTRAK 3 */}
+                  {auctionMode === 'upgrade_collateral' && canUpgradeToContract3 && (
+                    <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
+                      <div className="p-2 rounded-lg bg-sky-950/60 border border-sky-700/70 text-[11px] text-sky-200">
+                        Upgrade pengajuan Anda dari <strong>Kontrak 2 (Tanpa Jaminan)</strong> ke{' '}
+                        <strong>Kontrak 3 (Dengan Jaminan)</strong>. Taksiran nilai jaminan akan ditentukan kreditur.
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-amber-200 mb-1">
+                          Rincian Barang Jaminan *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={upgradeCollateralDesc}
+                          onChange={(e) => setUpgradeCollateralDesc(e.target.value)}
+                          placeholder="Contoh: HP Xiaomi Redmi Note 13 Pro+ 5G Fullset..."
+                          className="w-full px-3 py-2 rounded-lg bg-[#071510] border border-emerald-800 text-xs text-white"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                        <label className="p-2.5 rounded-lg bg-[#071510] border border-dashed border-sky-600 cursor-pointer">
+                          <span className="block font-semibold text-sky-200">
+                            Foto Jaminan 1 (Utama) *
+                          </span>
+                          <span className="text-[10px] text-emerald-400">
+                            {upgradePhotoCollateral1 ? '✓ Terlampir' : 'Pilih / ambil foto'}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleUpgradeCollateralPhoto(1, e)}
+                            className="hidden"
+                          />
+                        </label>
+                        <label className="p-2.5 rounded-lg bg-[#071510] border border-dashed border-sky-600 cursor-pointer">
+                          <span className="block font-semibold text-sky-200">
+                            Foto Jaminan 2 (Detail/Seri) *
+                          </span>
+                          <span className="text-[10px] text-emerald-400">
+                            {upgradePhotoCollateral2 ? '✓ Terlampir' : 'Pilih / ambil foto'}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleUpgradeCollateralPhoto(2, e)}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={submittingAuction}
+                        className="w-full py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs"
+                      >
+                        {submittingAuction
+                          ? 'Memproses Upgrade...'
+                          : 'Upgrade ke Kontrak 3 & Kirim Bukti Jaminan'}
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+            {/* SISTEM LELANG & NEGOSIASI DEBITUR */}
               {isNegotiableStatus && (
                 <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-600/70 space-y-3">
                   <div className="font-semibold text-amber-300">
@@ -1520,7 +1748,7 @@ export default function LoanApplyPage() {
                     </button>
                   ) : (
                     <div className="space-y-3 pt-1">
-                      {/* Tab Pilihan Jenis Lelang */}
+                      {/* Tab Pilihan Jenis Lelang Debitur */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
                         <button
                           type="button"
@@ -1548,25 +1776,11 @@ export default function LoanApplyPage() {
                           </button>
                         )}
 
-                        {canAuctionCollateralValue && (
-                          <button
-                            type="button"
-                            onClick={() => setAuctionMode('collateral_value')}
-                            className={`px-2.5 py-2 rounded-lg border text-left font-semibold ${
-                              auctionMode === 'collateral_value'
-                                ? 'bg-amber-600/30 border-amber-400 text-amber-200'
-                                : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
-                            }`}
-                          >
-                            3. Lelang Harga Jaminan
-                          </button>
-                        )}
-
                         {canUpgradeToContract3 && (
                           <button
                             type="button"
                             onClick={() => setAuctionMode('upgrade_collateral')}
-                            className={`px-2.5 py-2 rounded-lg border text-left font-semibold ${
+                            className={`px-2.5 py-2 rounded-lg border text-left font-semibold sm:col-span-2 ${
                               auctionMode === 'upgrade_collateral'
                                 ? 'bg-sky-600/30 border-sky-400 text-sky-200'
                                 : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
@@ -1661,56 +1875,12 @@ export default function LoanApplyPage() {
                         </form>
                       )}
 
-                      {/* FORM OPSI 3: LELANG HARGA JAMINAN (> POKOK PINJAMAN, KHUSUS KONTRAK 3) */}
-                      {auctionMode === 'collateral_value' && canAuctionCollateralValue && (
-                        <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
-                          <div className="text-[11px] text-sky-200">
-                            Syarat Kontrak 3: Nilai/taksiran barang jaminan wajib{' '}
-                            <strong>lebih besar dari pokok pinjaman</strong> (
-                            {formatCurrencyAmount(ticketPrincipal, ticketCurrency)}).
-                          </div>
-                          <div>
-                            <label className="block text-[11px] text-amber-200 mb-1">
-                              Taksiran Harga Pasar Barang Jaminan ({ticketCurrency}) *
-                            </label>
-                            <input
-                              type="number"
-                              step="any"
-                              required
-                              value={newCollateralValue}
-                              onChange={(e) => setNewCollateralValue(e.target.value)}
-                              placeholder={`Wajib > ${ticketPrincipal}`}
-                              className="w-full px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] text-amber-200 mb-1">
-                              Keterangan / Kondisi Barang Jaminan
-                            </label>
-                            <input
-                              type="text"
-                              value={upgradeCollateralDesc}
-                              onChange={(e) => setUpgradeCollateralDesc(e.target.value)}
-                              placeholder="Kelengkapan dus, nota, kondisi fisik..."
-                              className="w-full px-3 py-2 rounded-lg bg-[#071510] border border-emerald-800 text-xs text-white"
-                            />
-                          </div>
-                          <button
-                            type="submit"
-                            disabled={submittingAuction}
-                            className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs"
-                          >
-                            {submittingAuction ? 'Mengirim...' : 'Ajukan Taksiran Harga Jaminan'}
-                          </button>
-                        </form>
-                      )}
-
-                      {/* FORM OPSI 4: UPGRADE KONTRAK 2 -> KONTRAK 3 (MINIMAL RP 300.000) */}
+                      {/* FORM OPSI 3: UPGRADE KONTRAK 2 -> KONTRAK 3 */}
                       {auctionMode === 'upgrade_collateral' && canUpgradeToContract3 && (
                         <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
                           <div className="p-2 rounded-lg bg-sky-950/60 border border-sky-700/70 text-[11px] text-sky-200">
                             Upgrade pengajuan Anda dari <strong>Kontrak 2 (Tanpa Jaminan)</strong> ke{' '}
-                            <strong>Kontrak 3 (Dengan Jaminan)</strong> untuk meningkatkan peluang ACC secara signifikan.
+                            <strong>Kontrak 3 (Dengan Jaminan)</strong> untuk meningkatkan peluang ACC secara signifikan. Taksiran nilai jaminan akan ditentukan kreditur.
                           </div>
                           <div>
                             <label className="block text-[11px] text-amber-200 mb-1">
@@ -1723,21 +1893,6 @@ export default function LoanApplyPage() {
                               onChange={(e) => setUpgradeCollateralDesc(e.target.value)}
                               placeholder="Contoh: HP Xiaomi Redmi Note 13 Pro+ 5G Fullset..."
                               className="w-full px-3 py-2 rounded-lg bg-[#071510] border border-emerald-800 text-xs text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] text-amber-200 mb-1">
-                              Taksiran Harga Barang Jaminan ({ticketCurrency}) — Wajib &gt;{' '}
-                              {formatCurrencyAmount(ticketPrincipal, ticketCurrency)} *
-                            </label>
-                            <input
-                              type="number"
-                              step="any"
-                              required
-                              value={newCollateralValue}
-                              onChange={(e) => setNewCollateralValue(e.target.value)}
-                              placeholder={`Minimal > ${ticketPrincipal}`}
-                              className="w-full px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
                             />
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
