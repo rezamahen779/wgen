@@ -1116,10 +1116,9 @@ export default function LoanApplyPage() {
     const ticketPrincipal = Number(ticketData?.requested_amount || 0);
     const minUpgradeInCurrency = convertIdrLimit(300000, ticketCurrency, liveRates);
 
-    const canAuctionPrincipal =
-      ticketContractType === 'micro_unsecured' || ticketContractType === 'secured_collateral';
     const canUpgradeToContract3 =
-      ticketContractType === 'standard_unsecured' && ticketPrincipal >= minUpgradeInCurrency;
+      ticketContractType === 'micro_unsecured' ||
+      ticketContractType === 'standard_unsecured';
 
     const isNegotiableStatus =
       status === 'counter_offer' || status === 'rejected' || status === 'pending';
@@ -1622,7 +1621,7 @@ export default function LoanApplyPage() {
                 </div>
               )}
 
-              {/* SISTEM LELANG & NEGOSIASI DEBITUR */}
+             {/* SISTEM LELANG & NEGOSIASI DEBITUR */}
               {isNegotiableStatus && (
                 <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-600/70 space-y-3">
                   <div className="font-semibold text-amber-300">
@@ -1646,11 +1645,11 @@ export default function LoanApplyPage() {
                   ) : (
                     <div className="space-y-3 pt-1">
                       {/* Tab Pilihan Jenis Lelang Debitur */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
+                      <div className="grid grid-cols-1 gap-1.5 text-[11px]">
                         <button
                           type="button"
                           onClick={() => setAuctionMode('reward')}
-                          className={`px-2.5 py-2 rounded-lg border text-left font-semibold ${
+                          className={`px-3 py-2 rounded-lg border text-left font-semibold w-fit ${
                             auctionMode === 'reward'
                               ? 'bg-amber-600/30 border-amber-400 text-amber-200'
                               : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
@@ -1659,25 +1658,11 @@ export default function LoanApplyPage() {
                           1. Lelang Imbalan Jasa (%)
                         </button>
 
-                        {canAuctionPrincipal && !showCreditorPrincipalOffer && (
-                          <button
-                            type="button"
-                            onClick={() => setAuctionMode('principal')}
-                            className={`px-2.5 py-2 rounded-lg border text-left font-semibold ${
-                              auctionMode === 'principal'
-                                ? 'bg-amber-600/30 border-amber-400 text-amber-200'
-                                : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
-                            }`}
-                          >
-                            2. Ubah Pokok Pinjaman
-                          </button>
-                        )}
-
                         {canUpgradeToContract3 && (
                           <button
                             type="button"
                             onClick={() => setAuctionMode('upgrade_collateral')}
-                            className={`px-2.5 py-2 rounded-lg border text-left font-semibold sm:col-span-2 ${
+                            className={`px-3 py-2 rounded-lg border text-left font-semibold w-full ${
                               auctionMode === 'upgrade_collateral'
                                 ? 'bg-sky-600/30 border-sky-400 text-sky-200'
                                 : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
@@ -1688,7 +1673,7 @@ export default function LoanApplyPage() {
                         )}
                       </div>
 
-                      {/* FORM OPSI 1: LELANG IMBALAN JASA */}
+                      {/* FORM OPSI 1: LELANG IMBALAN JASA (BERLAKU UNTUK KONTRAK 1, 2, DAN 3) */}
                       {auctionMode === 'reward' && (
                         <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
                           <label className="block text-[11px] text-amber-200">
@@ -1724,40 +1709,17 @@ export default function LoanApplyPage() {
                         </form>
                       )}
 
-                      {/* FORM OPSI 2: UBAH POKOK PINJAMAN */}
-                      {auctionMode === 'principal' &&
-                        canAuctionPrincipal &&
-                        !showCreditorPrincipalOffer && (
-                          <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
-                            <label className="block text-[11px] text-amber-200">
-                              Masukkan Nominal Pokok Baru ({ticketCurrency}):
-                            </label>
-                            <div className="flex gap-2">
-                              <input
-                                type="number"
-                                step="any"
-                                required
-                                value={newRequestedAmount}
-                                onChange={(e) => setNewRequestedAmount(e.target.value)}
-                                className="flex-1 px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
-                              />
-                              <button
-                                type="submit"
-                                disabled={submittingAuction}
-                                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs"
-                              >
-                                {submittingAuction ? 'Kirim...' : 'Kirim'}
-                              </button>
-                            </div>
-                          </form>
-                        )}
-
-                      {/* FORM OPSI 3: UPGRADE KONTRAK 2 -> KONTRAK 3 */}
+                      {/* FORM OPSI 2: UPGRADE KONTRAK 1 / KONTRAK 2 -> KONTRAK 3 */}
                       {auctionMode === 'upgrade_collateral' && canUpgradeToContract3 && (
                         <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
                           <div className="p-2 rounded-lg bg-sky-950/60 border border-sky-700/70 text-[11px] text-sky-200">
-                            Upgrade pengajuan Anda dari <strong>Kontrak 2 (Tanpa Jaminan)</strong> ke{' '}
-                            <strong>Kontrak 3 (Dengan Jaminan)</strong>. Taksiran nilai jaminan akan ditentukan kreditur.
+                            Upgrade pengajuan Anda dari{' '}
+                            <strong>
+                              {ticketContractType === 'micro_unsecured'
+                                ? 'Kontrak 1 (Mikro)'
+                                : 'Kontrak 2 (Tanpa Jaminan)'}
+                            </strong>{' '}
+                            ke <strong>Kontrak 3 (Dengan Jaminan)</strong>. Taksiran nilai jaminan akan ditentukan kreditur.
                           </div>
                           <div>
                             <label className="block text-[11px] text-amber-200 mb-1">
