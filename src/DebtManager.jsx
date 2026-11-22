@@ -4991,7 +4991,7 @@ const getDynamicTierTexts = (targetCurr) => {
                     </label>
                     <input
                       type="text"
-                      placeholder="Contoh: BCA 1234567890 a.n Reza / DANA 0812xxx"
+                      placeholder="....."
                       defaultValue={localStorage.getItem('wgen_default_payment_account') || ''}
                       onBlur={(e) => {
                         const val = e.target.value.trim();
