@@ -351,7 +351,7 @@ function extractInstallmentProgress(ticketData) {
   const rewardPct = Number(ticketData.reward_percent ?? 12.5);
   const rewardAmt = (principal * rewardPct) / 100;
   const totalDue = Number(ticketData.total_payable || principal + rewardAmt);
-  const tenor = Math.max(1, Number(ticketData.tenor_months || 1));
+  const tenor = Math.max(1, Number(ticketData.approved_tenor_months || ticketData.tenor_months || 1));
   const isInstallment = Number(ticketData.is_installment) === 1 || Boolean(ticketData.is_installment);
   const installmentCount = isInstallment ? tenor : 1;
   const perTermAmount = totalDue / installmentCount;
@@ -441,6 +441,22 @@ function extractOfferedPrincipal(ticketData) {
   return Number(digits) || 0;
 }
 
+// Ekstrak tenor final yang ditetapkan kreditur (non-lelang)
+function extractApprovedTenor(ticketData) {
+  if (!ticketData) return 0;
+  const direct = Number(ticketData.approved_tenor_months || 0);
+  if (direct > 0) return direct;
+
+  const text = `${ticketData.rejection_reason || ''}`;
+  const match = text.match(/\[PERSETUJUAN TENOR FINAL:\s*(\d+)\s*BLN\]/i);
+  if (match) return Number(match[1]) || 0;
+
+  if (ticketData.status === 'tenor_offer') {
+    return Number(ticketData.tenor_months || 0);
+  }
+  return 0;
+}
+
 export default function LoanApplyPage() {
   const params = new URLSearchParams(window.location.search);
   const tokenParam = params.get('token') || '';
@@ -484,6 +500,9 @@ export default function LoanApplyPage() {
 
   // State Respon Penawaran Pokok Kreditur (Oke / Tolak / Minta Tambah maks 5x)
   const [respondingRevisedPrincipal, setRespondingRevisedPrincipal] = useState(false);
+
+  // State Respon Persetujuan Tenor Final Kreditur (Setuju / Tolak - Non-Lelang)
+  const [respondingTenorOffer, setRespondingTenorOffer] = useState(false);
 
   // State Form Upload Bukti Drop Barang Jaminan
   const [showDropProofForm, setShowDropProofForm] = useState(false);
@@ -1052,6 +1071,36 @@ export default function LoanApplyPage() {
     }
   };
 
+  // Handler respon debitur atas Persetujuan Tenor Final dari kreditur (Setuju / Tolak - Non-Lelang)
+  const handleRespondTenorOffer = async (agreed, approvedTenor) => {
+    if (!ticketData?.id) return;
+    const currentRewardPct = Number(
+      ticketData.reward_percent ||
+        (detectTicketContractType(ticketData) === 'standard_unsecured' ? 20 : 12.5)
+    );
+
+    setRespondingTenorOffer(true);
+    setTicketError('');
+    setAuctionSuccessMsg('');
+    try {
+      await resubmitLoanCounterOffer(ticketData.id, currentRewardPct, {
+        auctionType: agreed ? 'accept_tenor_offer' : 'reject_tenor_offer',
+        tenorMonths: approvedTenor,
+        agreedTenorOffer: agreed
+      });
+      setAuctionSuccessMsg(
+        agreed
+          ? `Anda menyetujui ketentuan tenor final selama ${approvedTenor} bulan. Menunggu pencairan/ACC final dari kreditur.`
+          : `Anda menolak ketentuan tenor ${approvedTenor} bulan. Pengajuan dibatalkan.`
+      );
+      await fetchTicketStatus(ticketData.id);
+    } catch (err) {
+      setTicketError(err.message || 'Gagal mengirim konfirmasi persetujuan tenor.');
+    } finally {
+      setRespondingTenorOffer(false);
+    }
+  };
+
   const handleDropProofPhotoChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1114,7 +1163,9 @@ export default function LoanApplyPage() {
     const ticketContractType = detectTicketContractType(ticketData);
     const ticketCurrency = (ticketData?.currency || 'IDR').toUpperCase();
     const ticketPrincipal = Number(ticketData?.requested_amount || 0);
-    const minUpgradeInCurrency = convertIdrLimit(300000, ticketCurrency, liveRates);
+    const activeTicketTenor = Number(
+      ticketData?.approved_tenor_months || ticketData?.tenor_months || 1
+    );
 
     const canUpgradeToContract3 =
       ticketContractType === 'micro_unsecured' ||
@@ -1131,6 +1182,10 @@ export default function LoanApplyPage() {
     const maxAddRequests = 5;
     const canRequestAdd = addRequestCount < maxAddRequests;
     const showCreditorPrincipalOffer = creditorOfferedPrincipal > 0 && status !== 'approved';
+
+    // Data Persetujuan Tenor Final Kreditur (Non-Lelang: Setuju / Tolak)
+    const approvedTenorOffer = extractApprovedTenor(ticketData);
+    const showCreditorTenorOffer = status === 'tenor_offer' && approvedTenorOffer > 0;
 
     return (
       <div className="min-h-screen bg-[#071510] text-emerald-50 py-8 px-4">
@@ -1205,6 +1260,10 @@ export default function LoanApplyPage() {
                   className={`px-3 py-1 rounded-full font-semibold text-[11px] ${
                     status === 'approved'
                       ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500'
+                      : status === 'tenor_offer'
+                      ? 'bg-teal-600/20 text-teal-300 border border-teal-500'
+                      : status === 'borrower_agreed'
+                      ? 'bg-emerald-600/20 text-emerald-200 border border-emerald-400'
                       : status === 'rejected' || status === 'counter_offer'
                       ? 'bg-red-600/20 text-red-300 border border-red-500'
                       : 'bg-amber-600/20 text-amber-300 border border-amber-500'
@@ -1212,6 +1271,10 @@ export default function LoanApplyPage() {
                 >
                   {status === 'approved'
                     ? '✓ DISETUJUI (ACC)'
+                    : status === 'tenor_offer'
+                    ? '📌 PERSETUJUAN TENOR FINAL'
+                    : status === 'borrower_agreed'
+                    ? '✓ KESEPAKATAN DISETUJUI'
                     : status === 'counter_offer'
                     ? '⚖ NEGOSIASI / LELANG'
                     : status === 'rejected'
@@ -1238,7 +1301,7 @@ export default function LoanApplyPage() {
                 <div>
                   <span className="text-emerald-400/80 block">Tenor & Skema:</span>
                   <span>
-                    {ticketData.tenor_months} Bulan (
+                    {activeTicketTenor} Bulan (
                     {Number(ticketData.is_installment) === 1 ? 'Cicilan Bulanan' : 'Pelunasan Akhir'})
                   </span>
                 </div>
@@ -1569,6 +1632,44 @@ export default function LoanApplyPage() {
                 </div>
               )}
 
+              {/* RESPON PERSETUJUAN TENOR FINAL DARI KREDITUR (NON-LELANG: SETUJU / TOLAK) */}
+              {showCreditorTenorOffer && (
+                <div className="p-3.5 rounded-xl bg-teal-950/50 border border-teal-500/70 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-teal-200 text-xs">
+                      Ketentuan Tenor Final Kreditur
+                    </span>
+                    <span className="font-mono font-bold text-white text-xs px-2 py-0.5 rounded bg-teal-800/80">
+                      {approvedTenorOffer} Bulan
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-teal-100/85 leading-relaxed">
+                    Kreditur menetapkan tenor final menjadi <strong>{approvedTenorOffer} bulan</strong> (ketentuan tetap / bukan lelang). Silakan pilih <strong>Setuju</strong> atau <strong>Tolak</strong>:
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <button
+                      type="button"
+                      disabled={respondingTenorOffer}
+                      onClick={() => handleRespondTenorOffer(true, approvedTenorOffer)}
+                      className="py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold"
+                    >
+                      Setuju ({approvedTenorOffer} Bln)
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={respondingTenorOffer}
+                      onClick={() => handleRespondTenorOffer(false, approvedTenorOffer)}
+                      className="py-2 px-3 rounded-lg bg-rose-600/80 hover:bg-rose-600 disabled:opacity-50 text-white font-bold"
+                    >
+                      Tolak
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* RESPON TAWARAN POKOK KREDITUR (OKE / TOLAK / MINTA TAMBAH MAKS 5X) */}
               {showCreditorPrincipalOffer && (
                 <div className="p-3.5 rounded-xl bg-indigo-950/45 border border-indigo-500/70 space-y-3">
@@ -1621,7 +1722,7 @@ export default function LoanApplyPage() {
                 </div>
               )}
 
-             {/* SISTEM LELANG & NEGOSIASI DEBITUR */}
+              {/* SISTEM LELANG & NEGOSIASI DEBITUR */}
               {isNegotiableStatus && (
                 <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-600/70 space-y-3">
                   <div className="font-semibold text-amber-300">
@@ -2232,12 +2333,12 @@ export default function LoanApplyPage() {
                 </div>
                 <div className="text-emerald-100/80">• Grace Period: 1 hari kalender setelah jatuh tempo (denda mulai H+2).</div>
                 <div className="text-emerald-100/80">
-                  - Periode Awal: {penaltyInfo.firstPeriod}{' '}
+                  • Periode Awal: {penaltyInfo.firstPeriod}{' '}
                   {numericAmount > 0 && <strong className="text-amber-200">({formatMoney(penaltyInfo.estFirstPenalty)})</strong>}
                 </div>
                 <div className="text-emerald-100/80">• Periode Lanjutan: {penaltyInfo.nextPeriod}</div>
                 <div className="text-emerald-100/80">
-                  - Batas Maksimal Denda: {penaltyInfo.maxCap}{' '}
+                  • Batas Maksimal Denda: {penaltyInfo.maxCap}{' '}
                   {numericAmount > 0 && <strong className="text-amber-200">(Maks {formatMoney(penaltyInfo.estMaxPenalty)})</strong>}
                 </div>
               </div>

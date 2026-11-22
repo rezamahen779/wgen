@@ -14,7 +14,7 @@ function generateAppId() {
 }
 
 /**
- * 0. Migrasi aman: Pastikan seluruh kolom tambahan tersedia di tabel loan_applications
+- 0. Migrasi aman: Pastikan seluruh kolom tambahan tersedia di tabel loan_applications
  */
 let columnsEnsured = false;
 export async function ensureApplicationExtraColumns() {
@@ -44,7 +44,7 @@ export async function ensureApplicationExtraColumns() {
 }
 
 /**
- * 1. Ambil QR Link aktif milik user, atau buat baru jika belum ada
+- 1. Ambil QR Link aktif milik user, atau buat baru jika belum ada
  */
 export async function getOrCreateLenderQrLink({
   lenderUid,
@@ -78,7 +78,7 @@ export async function getOrCreateLenderQrLink({
 }
 
 /**
- * 2. Update pengaturan QR Link (nama default, mata uang, mode mikro, status aktif)
+- 2. Update pengaturan QR Link (nama default, mata uang, mode mikro, status aktif)
  */
 export async function updateLenderQrSettings(token, { lenderName, defaultCurrency, isMicro, isActive }) {
   await turso.execute({
@@ -99,7 +99,7 @@ export async function updateLenderQrSettings(token, { lenderName, defaultCurrenc
 }
 
 /**
- * 3. Buat ulang token baru (jika link lama bocor/ingin diganti)
+- 3. Buat ulang token baru (jika link lama bocor/ingin diganti)
  */
 export async function regenerateLenderQrLink({
   lenderUid,
@@ -127,7 +127,7 @@ export async function regenerateLenderQrLink({
 }
 
 /**
- * 4. Validasi token saat calon peminjam membuka link /apply?token=...
+- 4. Validasi token saat calon peminjam membuka link /apply?token=...
  */
 export async function getQrLinkByToken(token) {
   if (!token) return null;
@@ -142,7 +142,7 @@ export async function getQrLinkByToken(token) {
 }
 
 /**
- * 5. Kirim pengajuan pinjaman lengkap dari form publik ke akun lender terkait
+- 5. Kirim pengajuan pinjaman lengkap dari form publik ke akun lender terkait
  */
 export async function submitLoanApplication(payload) {
   await ensureApplicationExtraColumns();
@@ -206,7 +206,7 @@ export async function submitLoanApplication(payload) {
 }
 
 /**
- * 6. Ambil daftar pengajuan masuk untuk akun lender yang sedang login
+- 6. Ambil daftar pengajuan masuk untuk akun lender yang sedang login
  */
 export async function getIncomingApplications(lenderUid, statusFilter = 'pending') {
   if (!lenderUid) return [];
@@ -226,7 +226,7 @@ export async function getIncomingApplications(lenderUid, statusFilter = 'pending
 }
 
 /**
- * 7. Ubah status pengajuan sederhana ('approved' atau 'rejected')
+- 7. Ubah status pengajuan sederhana ('approved' atau 'rejected')
  */
 export async function updateApplicationStatus(applicationId, status) {
   await ensureApplicationExtraColumns();
@@ -238,7 +238,7 @@ export async function updateApplicationStatus(applicationId, status) {
 }
 
 /**
- * 8. Ambil status pengajuan berdasarkan ID Tiket (untuk halaman publik ?ticket=...)
+- 8. Ambil status pengajuan berdasarkan ID Tiket (untuk halaman publik ?ticket=...)
  */
 export async function getLoanApplicationById(applicationId) {
   if (!applicationId) return null;
@@ -251,13 +251,14 @@ export async function getLoanApplicationById(applicationId) {
 }
 
 /**
- * 9. Sistem Lelang & Upgrade Multi-Opsi:
- *    - Lelang Imbalan Jasa (reward_percent)
- *    - Lelang Nominal Pokok Pinjaman (principal_amount)
- *    - Respon Tawaran Pokok Kreditur (accept_revised_principal / reject_revised_principal / request_add_principal maks 5x)
- *    - Update Rincian Jaminan (collateral_value)
- *    - Upgrade Kontrak 2 -> Kontrak 3 (upgrade_to_collateral)
- *    - Upload Bukti Drop Jaminan (collateral_drop_proof)
+- 9. Sistem Lelang, Persetujuan Tenor & Upgrade Multi-Opsi:
+-    - Persetujuan Tenor Final (accept_tenor_offer -> 'borrower_agreed' / reject_tenor_offer -> 'rejected')
+-    - Lelang Imbalan Jasa (reward_percent)
+-    - Lelang Nominal Pokok Pinjaman (principal_amount)
+-    - Respon Tawaran Pokok Kreditur (accept_revised_principal / reject_revised_principal / request_add_principal maks 5x)
+-    - Update Rincian Jaminan (collateral_value)
+-    - Upgrade Kontrak 2 -> Kontrak 3 (upgrade_to_collateral)
+-    - Upload Bukti Drop Jaminan (collateral_drop_proof)
  */
 export async function resubmitLoanCounterOffer(
   applicationId,
@@ -274,6 +275,48 @@ export async function resubmitLoanCounterOffer(
     newRewardPercent !== undefined && newRewardPercent !== null && newRewardPercent !== ''
       ? Number(newRewardPercent)
       : Number(existing.reward_percent ?? 12.5);
+
+  if (auctionType === 'accept_tenor_offer') {
+    const agreedTenor = Math.max(
+      1,
+      Number(extraPayload.tenorMonths || existing.tenor_months || 1)
+    );
+    await turso.execute({
+      sql: `UPDATE loan_applications
+            SET tenor_months = ?,
+                status = 'borrower_agreed',
+                rejection_reason = ?,
+                updated_at = ?
+            WHERE id = ?`,
+      args: [
+        agreedTenor,
+        `Debitur menyetujui ketentuan tenor final (${agreedTenor} bulan).`,
+        nowIso,
+        applicationId
+      ]
+    });
+    return { tenorMonths: agreedTenor, status: 'borrower_agreed' };
+  }
+
+  if (auctionType === 'reject_tenor_offer') {
+    const rejectedTenor = Math.max(
+      1,
+      Number(extraPayload.tenorMonths || existing.tenor_months || 1)
+    );
+    await turso.execute({
+      sql: `UPDATE loan_applications
+            SET status = 'rejected',
+                rejection_reason = ?,
+                updated_at = ?
+            WHERE id = ?`,
+      args: [
+        `Debitur menolak ketentuan tenor final (${rejectedTenor} bulan).`,
+        nowIso,
+        applicationId
+      ]
+    });
+    return { status: 'rejected' };
+  }
 
   if (auctionType === 'request_add_principal') {
     const currentAddCount = Number(existing.principal_add_requests || 0);
@@ -420,31 +463,48 @@ export async function resubmitLoanCounterOffer(
 }
 
 /**
- * 10. Kreditur memberi feedback jaminan, lelang pokok, atau menolak dengan alasan lelang imbalan jasa
+- 10. Kreditur memberi feedback jaminan, lelang pokok, tenor final, atau menolak dengan alasan lelang imbalan jasa
  */
 export async function updateApplicationFeedback({
   applicationId,
-  status, // 'pending' | 'counter_offer' | 'rejected' | 'approved'
+  status, // 'pending' | 'counter_offer' | 'tenor_offer' | 'borrower_agreed' | 'rejected' | 'approved'
   rejectionReason = null,
   collateralFeedback = null,
-  counterPrincipalAmount = null
+  counterPrincipalAmount = null,
+  approvedTenorMonths = null
 }) {
   await ensureApplicationExtraColumns();
   const nowIso = new Date().toISOString();
+  const resolvedTenor =
+    approvedTenorMonths !== null &&
+    approvedTenorMonths !== undefined &&
+    Number(approvedTenorMonths) > 0
+      ? Number(approvedTenorMonths)
+      : null;
+
   await turso.execute({
     sql: `UPDATE loan_applications
           SET status = COALESCE(?, status),
+              tenor_months = COALESCE(?, tenor_months),
               rejection_reason = ?,
               collateral_feedback = COALESCE(?, collateral_feedback),
               counter_principal_amount = COALESCE(?, counter_principal_amount),
               updated_at = ?
           WHERE id = ?`,
-    args: [status, rejectionReason, collateralFeedback, counterPrincipalAmount, nowIso, applicationId]
+    args: [
+      status,
+      resolvedTenor,
+      rejectionReason,
+      collateralFeedback,
+      counterPrincipalAmount,
+      nowIso,
+      applicationId
+    ]
   });
 }
 
 /**
- * 11. Peminjam melapor sudah transfer cicilan di halaman tiket (tersimpan ke Turso)
+- 11. Peminjam melapor sudah transfer cicilan di halaman tiket (tersimpan ke Turso)
  */
 export async function submitInstallmentPaymentReport(
   applicationId,
@@ -496,7 +556,7 @@ export async function submitInstallmentPaymentReport(
 }
 
 /**
- * 12. Kreditur mengonfirmasi cicilan masuk (menambah paid_amount & paid_installments di Turso)
+- 12. Kreditur mengonfirmasi cicilan masuk (menambah paid_amount & paid_installments di Turso)
  */
 export async function recordVerifiedInstallmentPayment({
   applicationId,
@@ -584,7 +644,7 @@ export async function recordVerifiedInstallmentPayment({
 }
 
 /**
- * 13. Sinkronisasi langsung total terbayar dari catatan hutang-piutang aplikasi utama ke tiket
+- 13. Sinkronisasi langsung total terbayar dari catatan hutang-piutang aplikasi utama ke tiket
  */
 export async function syncInstallmentStatusFromLoan({
   applicationId,
