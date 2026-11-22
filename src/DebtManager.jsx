@@ -1873,6 +1873,7 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
   if (qrLinkData?.token && typeof updateLenderQrSettings === 'function') {
     try {
       await updateLenderQrSettings(qrLinkData.token, {
+        paymentDestination: cleanAcc,
         paymentAccountInfo: cleanAcc,
         paymentMethodKey: methodValue
       });

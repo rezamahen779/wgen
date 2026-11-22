@@ -120,15 +120,28 @@ export async function getOrCreateLenderQrLink({
  */
 export async function updateLenderQrSettings(
   token,
-  { lenderName, defaultCurrency, isMicro, isActive, paymentDestination, payment_destination } = {}
+  {
+    lenderName,
+    defaultCurrency,
+    isMicro,
+    isActive,
+    paymentDestination,
+    payment_destination,
+    paymentAccountInfo
+  } = {}
 ) {
-  await ensureQrLinkExtraColumns();
-  const destVal =
+  await ensureApplicationExtraColumns();
+  const normalizedToken = String(token || '').trim().toUpperCase();
+  const rawDest =
     paymentDestination !== undefined
-      ? String(paymentDestination).trim()
+      ? paymentDestination
       : payment_destination !== undefined
-      ? String(payment_destination).trim()
+      ? payment_destination
+      : paymentAccountInfo !== undefined
+      ? paymentAccountInfo
       : null;
+
+  const destVal = rawDest !== null ? String(rawDest).trim() : null;
 
   await turso.execute({
     sql: `UPDATE lender_qr_links
@@ -137,18 +150,26 @@ export async function updateLenderQrSettings(
               is_micro = COALESCE(?, is_micro),
               is_active = COALESCE(?, is_active),
               payment_destination = COALESCE(?, payment_destination)
-          WHERE token = ?`,
+          WHERE UPPER(TRIM(token)) = ?`,
     args: [
       lenderName ?? null,
       defaultCurrency ?? null,
       typeof isMicro === 'boolean' ? (isMicro ? 1 : 0) : null,
       typeof isActive === 'boolean' ? (isActive ? 1 : 0) : null,
       destVal,
-      token
+      normalizedToken
     ]
   });
-}
 
+  if (destVal !== null && destVal !== '') {
+    await turso.execute({
+      sql: `UPDATE loan_applications
+            SET payment_destination = ?
+            WHERE UPPER(TRIM(qr_token)) = ?`,
+      args: [destVal, normalizedToken]
+    });
+  }
+}
 /**
  * 3. Buat ulang token baru (jika link lama bocor/ingin diganti)
  */

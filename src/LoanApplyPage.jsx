@@ -440,11 +440,17 @@ function extractDestinationAccount(ticketData, qrInfo) {
     ticketData?.bank_destination,
     ticketData?.qr_payment_destination,
     ticketData?.payment_account,
+    ticketData?.payment_account_info,
+    ticketData?.paymentAccountInfo,
+    ticketData?.default_payment_account,
     ticketData?.rekening_tujuan,
     qrInfo?.payment_destination,
     qrInfo?.destination_account,
     qrInfo?.bank_destination,
     qrInfo?.payment_account,
+    qrInfo?.payment_account_info,
+    qrInfo?.paymentAccountInfo,
+    qrInfo?.default_payment_account,
     qrInfo?.rekening_tujuan
   ];
 
@@ -1556,42 +1562,21 @@ export default function LoanApplyPage() {
                             </div>
                           </div>
 
-                          <div>
-                            <label className="block text-emerald-200/80 mb-1">
-                              Bank / E-Wallet Tujuan & Nama Pengirim
-                              {isDestinationLocked && (
-                                <span className="ml-1.5 text-[10px] text-emerald-400 font-semibold">
-                                  (Otomatis & Terkunci dari Kreditur)
-                                </span>
-                              )}
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              readOnly={isDestinationLocked}
-                              disabled={isDestinationLocked}
-                              value={
-                                isDestinationLocked
-                                  ? creditorDestinationAccount
-                                  : paymentReport.transferMethod
-                              }
-                              onChange={(e) => {
-                                if (!isDestinationLocked) {
-                                  setPaymentReport({
-                                    ...paymentReport,
-                                    transferMethod: e.target.value
-                                  });
-                                }
-                              }}
-                              placeholder="Contoh: BCA a.n. Budi / Dana"
-                              className={`w-full px-2.5 py-1.5 rounded border text-white ${
-                                isDestinationLocked
-                                  ? 'bg-[#071510] border-emerald-700/70 text-emerald-200 cursor-not-allowed opacity-90'
-                                  : 'bg-[#0c2119] border-emerald-800'
-                              }`}
-                            />
-                          </div>
-
+                         <div>
+  <label className="block text-emerald-200/80 mb-1">
+    Bank / E-Wallet Tujuan & Nama Pengirim
+    <span className="ml-1.5 text-[10px] text-emerald-400 font-semibold">
+      (Terkunci dari Kreditur)
+    </span>
+  </label>
+  <input
+    type="text"
+    required
+    readOnly
+    value={creditorDestinationAccount || 'Belum diatur oleh kreditur'}
+    className="w-full px-2.5 py-1.5 rounded border bg-[#071510] border-emerald-700/70 text-emerald-200 cursor-not-allowed opacity-90"
+  />
+</div>
                           <label className="p-2.5 rounded-lg bg-[#0c2119] border border-dashed border-emerald-700 cursor-pointer flex items-center justify-between gap-2">
                             <span className="text-emerald-200">
                               {paymentReport.proofImage
@@ -1863,48 +1848,47 @@ export default function LoanApplyPage() {
 
                       {/* FORM OPSI 1: LELANG IMBALAN JASA (KONTRAK 1 & 3 MAKS 12,5%, KONTRAK 2 MAKS 20%) */}
                       {auctionMode === 'reward' && (
-                        <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
-                          <label className="block text-[11px] text-amber-200">
-                            Masukkan Penawaran Imbalan Jasa Baru (%) (Maks {maxAuctionReward}%):
-                          </label>
-                          <div className="flex gap-2">
-                            <input
-                              type="number"
-                              step="0.1"
-                              min="0"
-                              max={maxAuctionReward}
-                              required
-                              value={newRewardPercent}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                if (val !== '' && Number(val) > maxAuctionReward) {
-                                  setNewRewardPercent(String(maxAuctionReward));
-                                  return;
-                                }
-                                setNewRewardPercent(val);
-                              }}
-                              className="min-w-0 flex-1 px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
-                            />
-                            <button
-                              type="submit"
-                              disabled={submittingAuction}
-                              className="shrink-0 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs"
-                            >
-                              {submittingAuction ? 'Kirim...' : 'Kirim Penawaran'}
-                            </button>
-                          </div>
-                          <div className="text-[11px] text-emerald-300">
-                            Estimasi Hadiah Baru:{' '}
-                            {formatCurrencyAmount(
-                              (ticketPrincipal *
-                                Math.min(maxAuctionReward, Number(newRewardPercent) || 0)) /
-                                100,
-                              ticketCurrency
-                            )}
-                          </div>
-                        </form>
-                      )}
-
+  <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
+    <label className="block text-[11px] text-amber-200">
+      Masukkan Penawaran Imbalan Jasa Baru (%) (Maks 20%):
+    </label>
+    <div className="flex gap-2">
+      <input
+        type="number"
+        step="0.1"
+        min="0"
+        max={maxAuctionReward}
+        required
+        value={newRewardPercent}
+        onChange={(e) => {
+          const val = e.target.value;
+          if (val !== '' && Number(val) > maxAuctionReward) {
+            setNewRewardPercent(String(maxAuctionReward));
+            return;
+          }
+          setNewRewardPercent(val);
+        }}
+        className="min-w-0 flex-1 px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
+      />
+      <button
+        type="submit"
+        disabled={submittingAuction}
+        className="shrink-0 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs"
+      >
+        {submittingAuction ? 'Kirim...' : 'Kirim Penawaran'}
+      </button>
+    </div>
+    <div className="text-[11px] text-emerald-300 break-all">
+      Estimasi Hadiah Baru:{' '}
+      {formatCurrencyAmount(
+        (ticketPrincipal *
+          Math.min(maxAuctionReward, Math.max(0, Number(newRewardPercent) || 0))) /
+          100,
+        ticketCurrency
+      )}
+    </div>
+  </form>
+)}
                       {/* FORM OPSI 2: UPGRADE KONTRAK 1 / KONTRAK 2 -> KONTRAK 3 */}
                       {auctionMode === 'upgrade_collateral' && canUpgradeToContract3 && (
                         <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
