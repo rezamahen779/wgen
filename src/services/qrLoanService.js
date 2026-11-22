@@ -22,6 +22,7 @@ export async function ensureApplicationExtraColumns() {
   const alters = [
     `ALTER TABLE loan_applications ADD COLUMN reward_percent REAL DEFAULT 12.5`,
     `ALTER TABLE loan_applications ADD COLUMN contract_type TEXT DEFAULT 'secured_collateral'`,
+    `ALTER TABLE loan_applications ADD COLUMN collateral_value REAL DEFAULT 0`,
     `ALTER TABLE loan_applications ADD COLUMN photo_collateral_2 TEXT`,
     `ALTER TABLE loan_applications ADD COLUMN rejection_reason TEXT`,
     `ALTER TABLE loan_applications ADD COLUMN collateral_feedback TEXT`,
@@ -153,17 +154,24 @@ export async function submitLoanApplication(payload) {
   const nowIso = new Date().toISOString();
   const isWithCollateral =
     payload.contractType === 'secured_collateral' || Boolean(payload.hasCollateral);
+  const resolvedContractType =
+    payload.contractType || (isWithCollateral ? 'secured_collateral' : 'standard_unsecured');
+  const defaultReward = resolvedContractType === 'standard_unsecured' ? 20 : 12.5;
+  const resolvedRewardPercent =
+    payload.rewardPercent !== undefined && payload.rewardPercent !== ''
+      ? Number(payload.rewardPercent)
+      : defaultReward;
 
   await turso.execute({
     sql: `INSERT INTO loan_applications (
             id, qr_token, lender_uid, borrower_name, debtor_id, debtor_address,
             borrower_phone, emergency_phone, requested_amount, currency,
             reward_percent, contract_type, tenor_months, is_installment,
-            has_collateral, collateral_desc,
+            has_collateral, collateral_desc, collateral_value,
             photo_id, photo_selfie, photo_selfie_id,
             photo_collateral_1, photo_collateral_2,
             notes, status, paid_amount, paid_installments, installment_history, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 0, '[]', ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 0, '[]', ?)`,
     args: [
       id,
       qrInfo.token,
@@ -175,12 +183,13 @@ export async function submitLoanApplication(payload) {
       (payload.emergencyPhone || '').trim(),
       Number(payload.requestedAmount) || 0,
       payload.currency || qrInfo.default_currency || 'IDR',
-      Number(payload.rewardPercent) || 12.5,
-      payload.contractType || (isWithCollateral ? 'secured_collateral' : 'standard_unsecured'),
+      resolvedRewardPercent,
+      resolvedContractType,
       Number(payload.tenorMonths) || 1,
       payload.isInstallment ? 1 : 0,
       isWithCollateral ? 1 : 0,
       isWithCollateral ? (payload.collateralDesc || '').trim() : '',
+      isWithCollateral ? Number(payload.collateralValue) || 0 : 0,
       payload.photoId || '',
       payload.photoSelfie || '',
       payload.photoSelfieId || '',
@@ -240,11 +249,100 @@ export async function getLoanApplicationById(applicationId) {
 }
 
 /**
- * 9. Sistem Lelang: Peminjam mengirim ulang penawaran imbalan jasa baru
+ * 9. Sistem Lelang & Upgrade Multi-Opsi:
+ *    - Lelang Imbalan Jasa (reward_percent)
+ *    - Lelang Nominal Pokok Pinjaman (principal_amount — Kontrak 1 & 3)
+ *    - Lelang Taksiran Harga Jaminan (collateral_value — Kontrak 3, wajib > pokok pinjaman)
+ *    - Upgrade Kontrak 2 -> Kontrak 3 (upgrade_to_collateral — minimal Rp 300rb + 2 foto jaminan)
  */
-export async function resubmitLoanCounterOffer(applicationId, newRewardPercent) {
+export async function resubmitLoanCounterOffer(applicationId, newRewardPercent, extraPayload = {}) {
   await ensureApplicationExtraColumns();
+  const existing = await getLoanApplicationById(applicationId);
+  if (!existing) throw new Error('Tiket pengajuan tidak ditemukan.');
+
   const nowIso = new Date().toISOString();
+  const auctionType = extraPayload?.auctionType || 'reward_percent';
+
+  const resolvedRewardPct =
+    extraPayload?.rewardPercent !== undefined
+      ? Number(extraPayload.rewardPercent)
+      : newRewardPercent !== undefined && newRewardPercent !== null
+      ? Number(newRewardPercent)
+      : Number(existing.reward_percent ?? 12.5);
+
+  if (auctionType === 'principal_amount') {
+    const nextPrincipal = Number(extraPayload.requestedAmount);
+    if (isNaN(nextPrincipal) || nextPrincipal <= 0) {
+      throw new Error('Nominal pokok pinjaman baru tidak valid.');
+    }
+    await turso.execute({
+      sql: `UPDATE loan_applications
+            SET requested_amount = ?,
+                reward_percent = ?,
+                status = 'pending',
+                rejection_reason = NULL,
+                updated_at = ?
+            WHERE id = ?`,
+      args: [nextPrincipal, resolvedRewardPct, nowIso, applicationId]
+    });
+    return;
+  }
+
+  if (auctionType === 'collateral_value') {
+    const nextColVal = Number(extraPayload.collateralValue);
+    const currentPrincipal = Number(existing.requested_amount || 0);
+    if (isNaN(nextColVal) || nextColVal <= currentPrincipal) {
+      throw new Error('Taksiran harga jaminan wajib lebih besar dari pokok pinjaman.');
+    }
+    const nextColDesc =
+      extraPayload.collateralDesc !== undefined && extraPayload.collateralDesc !== ''
+        ? String(extraPayload.collateralDesc).trim()
+        : existing.collateral_desc || '';
+
+    await turso.execute({
+      sql: `UPDATE loan_applications
+            SET collateral_value = ?,
+                collateral_desc = ?,
+                status = 'pending',
+                rejection_reason = NULL,
+                updated_at = ?
+            WHERE id = ?`,
+      args: [nextColVal, nextColDesc, nowIso, applicationId]
+    });
+    return;
+  }
+
+  if (auctionType === 'upgrade_to_collateral') {
+    const nextColVal = Number(extraPayload.collateralValue);
+    const currentPrincipal = Number(existing.requested_amount || 0);
+    if (isNaN(nextColVal) || nextColVal <= currentPrincipal) {
+      throw new Error('Taksiran harga jaminan wajib lebih besar dari pokok pinjaman.');
+    }
+    const nextColDesc = String(extraPayload.collateralDesc || '').trim();
+    const photo1 = extraPayload.photoCollateral1 || '';
+    const photo2 = extraPayload.photoCollateral2 || '';
+    if (!nextColDesc || !photo1 || !photo2) {
+      throw new Error('Deskripsi barang dan 2 foto bukti fisik jaminan wajib dilengkapi.');
+    }
+
+    await turso.execute({
+      sql: `UPDATE loan_applications
+            SET contract_type = 'secured_collateral',
+                has_collateral = 1,
+                collateral_desc = ?,
+                collateral_value = ?,
+                photo_collateral_1 = ?,
+                photo_collateral_2 = ?,
+                status = 'pending',
+                rejection_reason = NULL,
+                updated_at = ?
+            WHERE id = ?`,
+      args: [nextColDesc, nextColVal, photo1, photo2, nowIso, applicationId]
+    });
+    return;
+  }
+
+  // Default: Lelang Imbalan Jasa (reward_percent)
   await turso.execute({
     sql: `UPDATE loan_applications
           SET reward_percent = ?,
@@ -252,7 +350,7 @@ export async function resubmitLoanCounterOffer(applicationId, newRewardPercent) 
               rejection_reason = NULL,
               updated_at = ?
           WHERE id = ?`,
-    args: [Number(newRewardPercent), nowIso, applicationId]
+    args: [resolvedRewardPct, nowIso, applicationId]
   });
 }
 

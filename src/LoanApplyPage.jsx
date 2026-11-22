@@ -88,7 +88,7 @@ function buildDynamicContracts(currencyCode, rates) {
       badge: 'KONTRAK 1',
       title: 'PERJANJIAN PINJAMAN MIKRO (TANPA JAMINAN)',
       subtitle: `Khusus pinjaman nominal kecil (${microMin} – ${microMax}) [${code}] tanpa agunan fisik.`,
-      approvalBadge: 'Tingkat Keberhasilan ACC: Tinggi (~75%)',
+      approvalBadge: 'Tingkat Keberhasilan ACC: Cukup Tinggi',
       approvalBadgeClass: 'bg-emerald-900/80 border-emerald-600/70 text-emerald-300',
       minIdr: 100000,
       maxIdr: 500000,
@@ -131,7 +131,7 @@ function buildDynamicContracts(currencyCode, rates) {
       badge: 'KONTRAK 2',
       title: 'PERJANJIAN PINJAMAN PRIBADI STANDAR (TANPA JAMINAN)',
       subtitle: `Pinjaman reguler (${stdMin} – ${stdMax}) [${code}] tanpa penyerahan aset agunan fisik.`,
-      approvalBadge: '⚠ Tingkat Keberhasilan ACC: < 1% (Sangat Kecil)',
+      approvalBadge: '⚠ Tingkat Keberhasilan ACC: < 5% (Sangat Kecil)',
       approvalBadgeClass: 'bg-rose-950/90 border-rose-600/80 text-rose-300',
       minIdr: 300000,
       maxIdr: 50000000,
@@ -141,7 +141,7 @@ function buildDynamicContracts(currencyCode, rates) {
         '2. Tanggal pencairan dana dan tanggal jatuh tempo pelunasan akhir dihitung sesuai tenor yang disetujui.',
         '3. Toleransi pembayaran (Grace Period): 1 (satu) hari kalender setelah tanggal jatuh tempo.',
         '4. Denda keterlambatan mulai berlaku pada hari berikutnya (H+2) setelah masa toleransi berakhir.',
-        '5. Imbalan jasa / hadiah pinjaman yang disepakati (standar 12,5% atau hasil kesepakatan penawaran) merupakan kewajiban Pihak Kedua untuk dibayarkan kepada Pihak Pertama.'
+        '5. Imbalan jasa / hadiah pinjaman yang disepakati (khusus skema Kontrak 2 sebesar 20% atau hasil kesepakatan lelang penawaran) merupakan kewajiban Pihak Kedua untuk dibayarkan kepada Pihak Pertama.'
       ],
       pasal2Intro:
         'Denda dihitung berdasarkan pokok pinjaman awal, bukan berdasarkan sisa angsuran, dan tidak menggunakan sistem bunga majemuk.',
@@ -181,7 +181,7 @@ function buildDynamicContracts(currencyCode, rates) {
       badge: 'KONTRAK 3',
       title: 'PERJANJIAN PINJAMAN PRIBADI DAN JAMINAN',
       subtitle: `Pinjaman dengan jaminan (${stdMin} – ${stdMax}) [${code}]. Wajib menyerahkan keterangan barang agunan beserta 2 foto bukti fisik jaminan.`,
-      approvalBadge: 'Tingkat Keberhasilan ACC: Sangat Tinggi (~90%)',
+      approvalBadge: 'Tingkat Keberhasilan ACC: Cukup Tinggi',
       approvalBadgeClass: 'bg-sky-950/90 border-sky-600/70 text-sky-300',
       minIdr: 300000,
       maxIdr: 50000000,
@@ -208,7 +208,7 @@ function buildDynamicContracts(currencyCode, rates) {
       ],
       pasal3Title: 'PASAL 3 - JAMINAN / AGUNAN',
       pasal3Items: [
-        '1. Pinjaman ini disertai jaminan/agunan yang nilai wajar dan jenisnya telah disepakati bersama oleh kedua belah pihak.',
+        '1. Pinjaman ini disertai jaminan/agunan yang nilai wajar dan jenisnya telah disepakati bersama oleh kedua belah pihak (nilai jaminan wajib melebihi pokok pinjaman).',
         '2. Rincian jaminan yang diserahkan wajib dicantumkan secara jujur dan akurat pada formulir pengajuan ini.',
         '3. Pihak Kedua menjamin sepenuhnya bahwa barang/aset jaminan tersebut merupakan milik sahnya atau telah memperoleh persetujuan tertulis dari pemilik sah serta tidak sedang dalam sengketa.',
         '4. Foto dan dokumentasi fisik jaminan (2 foto lampiran) merupakan bagian tidak terpisahkan dari perjanjian ini.'
@@ -370,6 +370,19 @@ function extractInstallmentProgress(ticketData) {
   };
 }
 
+// Deteksi tipe kontrak dari record ticketData
+function detectTicketContractType(ticketData) {
+  if (!ticketData) return 'standard_unsecured';
+  if (ticketData.contract_type) return ticketData.contract_type;
+  if (Number(ticketData.has_collateral) === 1 || Boolean(ticketData.has_collateral)) {
+    return 'secured_collateral';
+  }
+  const code = (ticketData.currency || 'IDR').toUpperCase();
+  const amt = Number(ticketData.requested_amount || 0);
+  if (code === 'IDR' && amt <= 500000) return 'micro_unsecured';
+  return 'standard_unsecured';
+}
+
 export default function LoanApplyPage() {
   const params = new URLSearchParams(window.location.search);
   const tokenParam = params.get('token') || '';
@@ -400,8 +413,15 @@ export default function LoanApplyPage() {
   const [submittingPaymentReport, setSubmittingPaymentReport] = useState(false);
   const [paymentReportSuccess, setPaymentReportSuccess] = useState('');
 
+  // State Sistem Lelang Multi-Opsi (Imbalan Jasa, Nominal Pokok K1 & K3, Harga Jaminan K3, Upgrade K2 -> K3)
   const [showAuctionForm, setShowAuctionForm] = useState(false);
+  const [auctionMode, setAuctionMode] = useState('reward'); // 'reward' | 'principal' | 'collateral_value' | 'upgrade_collateral'
   const [newRewardPercent, setNewRewardPercent] = useState('12.5');
+  const [newRequestedAmount, setNewRequestedAmount] = useState('');
+  const [newCollateralValue, setNewCollateralValue] = useState('');
+  const [upgradeCollateralDesc, setUpgradeCollateralDesc] = useState('');
+  const [upgradePhotoCollateral1, setUpgradePhotoCollateral1] = useState('');
+  const [upgradePhotoCollateral2, setUpgradePhotoCollateral2] = useState('');
   const [submittingAuction, setSubmittingAuction] = useState(false);
   const [auctionSuccessMsg, setAuctionSuccessMsg] = useState('');
 
@@ -465,6 +485,9 @@ export default function LoanApplyPage() {
       } else {
         setTicketData(app);
         setNewRewardPercent(String(app.reward_percent || '12.5'));
+        setNewRequestedAmount(String(app.requested_amount || ''));
+        setNewCollateralValue(String(app.collateral_value || ''));
+        setUpgradeCollateralDesc(app.collateral_desc || '');
 
         const prog = extractInstallmentProgress(app);
         if (prog) {
@@ -533,6 +556,18 @@ export default function LoanApplyPage() {
       setForm((prev) => ({ ...prev, [field]: compressed }));
     } catch (err) {
       setFormError(err.message || 'Gagal memproses gambar.');
+    }
+  };
+
+  const handleUpgradeCollateralPhoto = async (slot, e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressed = await compressImageToBase64(file);
+      if (slot === 1) setUpgradePhotoCollateral1(compressed);
+      else setUpgradePhotoCollateral2(compressed);
+    } catch (err) {
+      setTicketError(err.message || 'Gagal memproses foto barang jaminan.');
     }
   };
 
@@ -614,10 +649,13 @@ export default function LoanApplyPage() {
           nextAmount = String(nextMax);
         }
       }
+      // Khusus Kontrak 2 otomatis imbalan jasa 20% (tetap bisa di-edit/lelang), Kontrak 1 & 3 kembali ke standar 12.5%
+      const nextReward = newContractId === 'standard_unsecured' ? '20' : '12.5';
       return {
         ...prev,
         contractType: newContractId,
         requestedAmount: nextAmount,
+        rewardPercent: nextReward,
         agreedAllClauses: false
       };
     });
@@ -722,12 +760,13 @@ export default function LoanApplyPage() {
 
     setSubmitting(true);
     try {
+      const defaultReward = form.contractType === 'standard_unsecured' ? 20 : 12.5;
       const res = await submitLoanApplication({
         qrToken: tokenParam,
         ...form,
         tenorMonths: Math.min(12, Math.max(1, parsedTenorVal)),
         hasCollateral: selectedContract.requiresCollateral,
-        rewardPercent: Number(form.rewardPercent) || 12.5
+        rewardPercent: Number(form.rewardPercent) || defaultReward
       });
       setSubmittedResult(res);
     } catch (err) {
@@ -737,25 +776,174 @@ export default function LoanApplyPage() {
     }
   };
 
+  // Handler Submit Lelang Multi-Opsi pada Halaman Cek Status Tiket
   const handleAuctionResubmit = async (e) => {
     e.preventDefault();
     if (!ticketData?.id) return;
-    const pct = Number(newRewardPercent);
-    if (isNaN(pct) || pct < 0) {
-      setTicketError('Masukkan persentase imbalan jasa yang valid.');
+
+    const ticketCurrency = (ticketData.currency || 'IDR').toUpperCase();
+    const currentPrincipal = Number(ticketData.requested_amount || 0);
+    const currentRewardPct = Number(
+      ticketData.reward_percent ||
+        (detectTicketContractType(ticketData) === 'standard_unsecured' ? 20 : 12.5)
+    );
+    const ticketContractType = detectTicketContractType(ticketData);
+
+    setTicketError('');
+
+    if (auctionMode === 'reward') {
+      const pct = Number(newRewardPercent);
+      const maxAllowedPct = ticketContractType === 'standard_unsecured' ? 20 : 100;
+      if (isNaN(pct) || pct < 0 || pct > maxAllowedPct) {
+        setTicketError(
+          ticketContractType === 'standard_unsecured'
+            ? 'Untuk Kontrak 2, penawaran imbalan jasa maksimal adalah 20%.'
+            : 'Masukkan persentase imbalan jasa yang valid (0% – 100%).'
+        );
+        return;
+      }
+
+      setSubmittingAuction(true);
+      try {
+        await resubmitLoanCounterOffer(ticketData.id, pct, {
+          auctionType: 'reward_percent',
+          rewardPercent: pct
+        });
+        setAuctionSuccessMsg(
+          `Penawaran baru imbalan jasa (${pct}%) berhasil dikirim! Menunggu tinjauan ulang kreditur.`
+        );
+        setShowAuctionForm(false);
+        await fetchTicketStatus(ticketData.id);
+      } catch (err) {
+        setTicketError(err.message || 'Gagal mengirim ulang penawaran imbalan jasa.');
+      } finally {
+        setSubmittingAuction(false);
+      }
       return;
     }
-    setSubmittingAuction(true);
-    setTicketError('');
-    try {
-      await resubmitLoanCounterOffer(ticketData.id, pct);
-      setAuctionSuccessMsg(`Penawaran baru imbalan jasa (${pct}%) berhasil dikirim! Menunggu tinjauan ulang kreditur.`);
-      setShowAuctionForm(false);
-      await fetchTicketStatus(ticketData.id);
-    } catch (err) {
-      setTicketError(err.message || 'Gagal mengirim ulang penawaran imbalan jasa.');
-    } finally {
-      setSubmittingAuction(false);
+
+    if (auctionMode === 'principal') {
+      const amt = Number(newRequestedAmount);
+      const minAllowed = convertIdrLimit(
+        ticketContractType === 'micro_unsecured' ? 100000 : 300000,
+        ticketCurrency,
+        liveRates
+      );
+      const maxAllowed = convertIdrLimit(
+        ticketContractType === 'micro_unsecured' ? 500000 : 50000000,
+        ticketCurrency,
+        liveRates
+      );
+
+      if (isNaN(amt) || amt < minAllowed || amt > maxAllowed) {
+        setTicketError(
+          `Nominal pokok pinjaman wajib berada di antara ${formatCurrencyAmount(
+            minAllowed,
+            ticketCurrency
+          )} s.d. ${formatCurrencyAmount(maxAllowed, ticketCurrency)}.`
+        );
+        return;
+      }
+
+      setSubmittingAuction(true);
+      try {
+        await resubmitLoanCounterOffer(ticketData.id, currentRewardPct, {
+          auctionType: 'principal_amount',
+          requestedAmount: amt,
+          rewardPercent: currentRewardPct
+        });
+        setAuctionSuccessMsg(
+          `Penawaran lelang nominal pokok pinjaman baru sebesar ${formatCurrencyAmount(
+            amt,
+            ticketCurrency
+          )} berhasil dikirim! Menunggu tinjauan ulang kreditur.`
+        );
+        setShowAuctionForm(false);
+        await fetchTicketStatus(ticketData.id);
+      } catch (err) {
+        setTicketError(err.message || 'Gagal mengirim penawaran nominal pokok pinjaman.');
+      } finally {
+        setSubmittingAuction(false);
+      }
+      return;
+    }
+
+    if (auctionMode === 'collateral_value') {
+      const colVal = Number(newCollateralValue);
+      if (isNaN(colVal) || colVal <= currentPrincipal) {
+        setTicketError(
+          `Harga/taksiran barang jaminan wajib LEBIH BESAR dari pokok pinjaman (${formatCurrencyAmount(
+            currentPrincipal,
+            ticketCurrency
+          )}).`
+        );
+        return;
+      }
+
+      setSubmittingAuction(true);
+      try {
+        await resubmitLoanCounterOffer(ticketData.id, currentRewardPct, {
+          auctionType: 'collateral_value',
+          collateralValue: colVal,
+          collateralDesc: upgradeCollateralDesc.trim() || ticketData.collateral_desc || ''
+        });
+        setAuctionSuccessMsg(
+          `Penawaran lelang harga jaminan (${formatCurrencyAmount(
+            colVal,
+            ticketCurrency
+          )}) berhasil dikirim! Menunggu verifikasi ulang kreditur.`
+        );
+        setShowAuctionForm(false);
+        await fetchTicketStatus(ticketData.id);
+      } catch (err) {
+        setTicketError(err.message || 'Gagal mengirim penawaran harga jaminan.');
+      } finally {
+        setSubmittingAuction(false);
+      }
+      return;
+    }
+
+    if (auctionMode === 'upgrade_collateral') {
+      const colVal = Number(newCollateralValue);
+      if (!upgradeCollateralDesc.trim()) {
+        setTicketError('Rincian / keterangan barang jaminan wajib diisi untuk upgrade ke Kontrak 3.');
+        return;
+      }
+      if (isNaN(colVal) || colVal <= currentPrincipal) {
+        setTicketError(
+          `Taksiran harga barang jaminan wajib LEBIH BESAR dari pokok pinjaman (${formatCurrencyAmount(
+            currentPrincipal,
+            ticketCurrency
+          )}).`
+        );
+        return;
+      }
+      if (!upgradePhotoCollateral1 || !upgradePhotoCollateral2) {
+        setTicketError('Kedua foto bukti fisik barang jaminan (Foto 1 & Foto 2) wajib dilampirkan.');
+        return;
+      }
+
+      setSubmittingAuction(true);
+      try {
+        await resubmitLoanCounterOffer(ticketData.id, currentRewardPct, {
+          auctionType: 'upgrade_to_collateral',
+          contractType: 'secured_collateral',
+          hasCollateral: true,
+          collateralDesc: upgradeCollateralDesc.trim(),
+          collateralValue: colVal,
+          photoCollateral1: upgradePhotoCollateral1,
+          photoCollateral2: upgradePhotoCollateral2
+        });
+        setAuctionSuccessMsg(
+          'Permintaan Upgrade ke Kontrak 3 (Dengan Jaminan) beserta foto & taksiran harga jaminan berhasil dikirim!'
+        );
+        setShowAuctionForm(false);
+        await fetchTicketStatus(ticketData.id);
+      } catch (err) {
+        setTicketError(err.message || 'Gagal mengirim upgrade kontrak jaminan.');
+      } finally {
+        setSubmittingAuction(false);
+      }
     }
   };
 
@@ -768,14 +956,24 @@ export default function LoanApplyPage() {
   const penaltyInfo = getPenaltyTierInfo(form.contractType, numericAmount, form.currency, liveRates);
 
   // =========================================================================
-  // TAMPILAN 1: HALAMAN CEK STATUS TIKET, STATUS ANGSURAN & LELANG IMBALAN JASA
+  // TAMPILAN 1: HALAMAN CEK STATUS TIKET, STATUS ANGSURAN & LELANG MULTI-OPSI
   // =========================================================================
   if (trackingMode || (!tokenParam && !submittedResult)) {
     const status = ticketData?.status || '';
-    const isRejectedFee =
-      status === 'counter_offer' ||
-      (status === 'rejected' &&
-        (ticketData?.rejection_reason || '').toLowerCase().includes('imbalan'));
+    const ticketContractType = detectTicketContractType(ticketData);
+    const ticketCurrency = (ticketData?.currency || 'IDR').toUpperCase();
+    const ticketPrincipal = Number(ticketData?.requested_amount || 0);
+    const minUpgradeInCurrency = convertIdrLimit(300000, ticketCurrency, liveRates);
+
+    // Kelayakan masing-masing fitur lelang berdasarkan jenis kontrak tiket
+    const canAuctionPrincipal =
+      ticketContractType === 'micro_unsecured' || ticketContractType === 'secured_collateral';
+    const canAuctionCollateralValue = ticketContractType === 'secured_collateral';
+    const canUpgradeToContract3 =
+      ticketContractType === 'standard_unsecured' && ticketPrincipal >= minUpgradeInCurrency;
+
+    const isNegotiableStatus =
+      status === 'counter_offer' || status === 'rejected' || status === 'pending';
 
     const progress = extractInstallmentProgress(ticketData);
 
@@ -786,7 +984,7 @@ export default function LoanApplyPage() {
             <div>
               <h1 className="text-lg font-bold text-white">Cek Status Pengajuan & Angsuran</h1>
               <p className="text-xs text-emerald-200/75 mt-1">
-                Pantau status persetujuan (ACC), progres verifikasi cicilan yang sudah ditransfer, atau penawaran ulang imbalan jasa.
+                Pantau status persetujuan (ACC), progres verifikasi cicilan, atau lakukan penawaran lelang / upgrade jaminan.
               </p>
             </div>
             {tokenParam && (
@@ -860,7 +1058,7 @@ export default function LoanApplyPage() {
                   {status === 'approved'
                     ? '✓ DISETUJUI (ACC)'
                     : status === 'counter_offer'
-                    ? '⚖ NEGOSIASI IMBALAN JASA'
+                    ? '⚖ NEGOSIASI / LELANG'
                     : status === 'rejected'
                     ? '✕ DITOLAK'
                     : '⏳ MENUNGGU TINJAUAN'}
@@ -877,7 +1075,9 @@ export default function LoanApplyPage() {
                 <div>
                   <span className="text-emerald-400/80 block">Imbalan Jasa:</span>
                   <span className="font-semibold text-emerald-300">
-                    {ticketData.reward_percent || 12.5}%
+                    {ticketData.reward_percent ||
+                      (ticketContractType === 'standard_unsecured' ? 20 : 12.5)}
+                    %
                   </span>
                 </div>
                 <div>
@@ -888,8 +1088,14 @@ export default function LoanApplyPage() {
                   </span>
                 </div>
                 <div>
-                  <span className="text-emerald-400/80 block">ID Tiket:</span>
-                  <span className="font-mono">{ticketData.id}</span>
+                  <span className="text-emerald-400/80 block">Skema Kontrak:</span>
+                  <span className="font-semibold text-emerald-200">
+                    {ticketContractType === 'micro_unsecured'
+                      ? 'Kontrak 1 (Mikro)'
+                      : ticketContractType === 'secured_collateral'
+                      ? 'Kontrak 3 (Dengan Jaminan)'
+                      : 'Kontrak 2 (Tanpa Jaminan)'}
+                  </span>
                 </div>
               </div>
 
@@ -1145,54 +1351,291 @@ export default function LoanApplyPage() {
                 </div>
               )}
 
-              {isRejectedFee && (
+              {/* SISTEM LELANG & NEGOSIASI MULTI-OPSI */}
+              {isNegotiableStatus && (
                 <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-600/70 space-y-3">
                   <div className="font-semibold text-amber-300">
-                    Sistem Lelang Kesepakatan Imbalan Jasa
+                    Sistem Lelang & Negosiasi Pengajuan
                   </div>
                   <p className="text-[11px] text-amber-100/85 leading-relaxed">
-                    Pengajuan Anda belum disepakati pada besaran imbalan jasa saat ini. Anda dapat mengajukan ulang penawaran persentase imbalan jasa tanpa perlu mengisi ulang data KTP/foto.
+                    Ajukan penawaran ulang tanpa perlu mengisi ulang data KTP/selfie. Pilih opsi negosiasi yang tersedia untuk kontrak Anda di bawah ini:
                   </p>
+
                   {!showAuctionForm ? (
                     <button
                       type="button"
-                      onClick={() => setShowAuctionForm(true)}
+                      onClick={() => {
+                        setAuctionMode('reward');
+                        setShowAuctionForm(true);
+                      }}
                       className="w-full py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs"
                     >
-                      Klik di Sini untuk Ajukan Ulang Imbalan Jasa
+                      Buka Menu Lelang & Negosiasi Penawaran
                     </button>
                   ) : (
-                    <form onSubmit={handleAuctionResubmit} className="space-y-2.5 pt-1">
-                      <label className="block text-[11px] text-amber-200">
-                        Masukkan Penawaran Imbalan Jasa Baru (%):
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          max="100"
-                          required
-                          value={newRewardPercent}
-                          onChange={(e) => setNewRewardPercent(e.target.value)}
-                          className="flex-1 px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
-                        />
+                    <div className="space-y-3 pt-1">
+                      {/* Tab Pilihan Jenis Lelang */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
                         <button
-                          type="submit"
-                          disabled={submittingAuction}
-                          className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs"
+                          type="button"
+                          onClick={() => setAuctionMode('reward')}
+                          className={`px-2.5 py-2 rounded-lg border text-left font-semibold ${
+                            auctionMode === 'reward'
+                              ? 'bg-amber-600/30 border-amber-400 text-amber-200'
+                              : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
+                          }`}
                         >
-                          {submittingAuction ? 'Kirim...' : 'Kirim Penawaran'}
+                          1. Lelang Imbalan Jasa (%)
                         </button>
-                      </div>
-                      <div className="text-[11px] text-emerald-300">
-                        Estimasi Hadiah Baru:{' '}
-                        {formatCurrencyAmount(
-                          (Number(ticketData.requested_amount || 0) * (Number(newRewardPercent) || 0)) / 100,
-                          ticketData.currency
+
+                        {canAuctionPrincipal && (
+                          <button
+                            type="button"
+                            onClick={() => setAuctionMode('principal')}
+                            className={`px-2.5 py-2 rounded-lg border text-left font-semibold ${
+                              auctionMode === 'principal'
+                                ? 'bg-amber-600/30 border-amber-400 text-amber-200'
+                                : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
+                            }`}
+                          >
+                            2. Lelang Nominal Pokok
+                          </button>
+                        )}
+
+                        {canAuctionCollateralValue && (
+                          <button
+                            type="button"
+                            onClick={() => setAuctionMode('collateral_value')}
+                            className={`px-2.5 py-2 rounded-lg border text-left font-semibold ${
+                              auctionMode === 'collateral_value'
+                                ? 'bg-amber-600/30 border-amber-400 text-amber-200'
+                                : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
+                            }`}
+                          >
+                            3. Lelang Harga Jaminan
+                          </button>
+                        )}
+
+                        {canUpgradeToContract3 && (
+                          <button
+                            type="button"
+                            onClick={() => setAuctionMode('upgrade_collateral')}
+                            className={`px-2.5 py-2 rounded-lg border text-left font-semibold ${
+                              auctionMode === 'upgrade_collateral'
+                                ? 'bg-sky-600/30 border-sky-400 text-sky-200'
+                                : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
+                            }`}
+                          >
+                            ★ Upgrade ke Kontrak 3 (Jaminan)
+                          </button>
                         )}
                       </div>
-                    </form>
+
+                      {/* FORM OPSI 1: LELANG IMBALAN JASA */}
+                      {auctionMode === 'reward' && (
+                        <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
+                          <label className="block text-[11px] text-amber-200">
+                            Masukkan Penawaran Imbalan Jasa Baru (%){' '}
+                            {ticketContractType === 'standard_unsecured' ? '(Maks 20%)' : ''}:
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max={ticketContractType === 'standard_unsecured' ? '20' : '100'}
+                              required
+                              value={newRewardPercent}
+                              onChange={(e) => setNewRewardPercent(e.target.value)}
+                              className="flex-1 px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
+                            />
+                            <button
+                              type="submit"
+                              disabled={submittingAuction}
+                              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs"
+                            >
+                              {submittingAuction ? 'Kirim...' : 'Kirim Penawaran'}
+                            </button>
+                          </div>
+                          <div className="text-[11px] text-emerald-300">
+                            Estimasi Hadiah Baru:{' '}
+                            {formatCurrencyAmount(
+                              (ticketPrincipal * (Number(newRewardPercent) || 0)) / 100,
+                              ticketCurrency
+                            )}
+                          </div>
+                        </form>
+                      )}
+
+                      {/* FORM OPSI 2: LELANG NOMINAL POKOK PINJAMAN (KHUSUS KONTRAK 1 & 3) */}
+                      {auctionMode === 'principal' && canAuctionPrincipal && (
+                        <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
+                          <label className="block text-[11px] text-amber-200">
+                            Ajukan Nominal Pokok Pinjaman Baru ({ticketCurrency}):
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="number"
+                              step="any"
+                              required
+                              value={newRequestedAmount}
+                              onChange={(e) => setNewRequestedAmount(e.target.value)}
+                              placeholder="Nominal pokok baru"
+                              className="flex-1 px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
+                            />
+                            <button
+                              type="submit"
+                              disabled={submittingAuction}
+                              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs"
+                            >
+                              {submittingAuction ? 'Kirim...' : 'Ajukan Nominal'}
+                            </button>
+                          </div>
+                          <div className="text-[11px] text-emerald-300">
+                            Batas{' '}
+                            {ticketContractType === 'micro_unsecured' ? 'Kontrak 1' : 'Kontrak 3'}:{' '}
+                            {formatCurrencyAmount(
+                              convertIdrLimit(
+                                ticketContractType === 'micro_unsecured' ? 100000 : 300000,
+                                ticketCurrency,
+                                liveRates
+                              ),
+                              ticketCurrency
+                            )}{' '}
+                            –{' '}
+                            {formatCurrencyAmount(
+                              convertIdrLimit(
+                                ticketContractType === 'micro_unsecured' ? 500000 : 50000000,
+                                ticketCurrency,
+                                liveRates
+                              ),
+                              ticketCurrency
+                            )}
+                          </div>
+                        </form>
+                      )}
+
+                      {/* FORM OPSI 3: LELANG HARGA JAMINAN (> POKOK PINJAMAN, KHUSUS KONTRAK 3) */}
+                      {auctionMode === 'collateral_value' && canAuctionCollateralValue && (
+                        <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
+                          <div className="text-[11px] text-sky-200">
+                            Syarat Kontrak 3: Nilai/taksiran barang jaminan wajib{' '}
+                            <strong>lebih besar dari pokok pinjaman</strong> (
+                            {formatCurrencyAmount(ticketPrincipal, ticketCurrency)}).
+                          </div>
+                          <div>
+                            <label className="block text-[11px] text-amber-200 mb-1">
+                              Taksiran Harga Pasar Barang Jaminan ({ticketCurrency}) *
+                            </label>
+                            <input
+                              type="number"
+                              step="any"
+                              required
+                              value={newCollateralValue}
+                              onChange={(e) => setNewCollateralValue(e.target.value)}
+                              placeholder={`Wajib > ${ticketPrincipal}`}
+                              className="w-full px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] text-amber-200 mb-1">
+                              Keterangan / Kondisi Barang Jaminan
+                            </label>
+                            <input
+                              type="text"
+                              value={upgradeCollateralDesc}
+                              onChange={(e) => setUpgradeCollateralDesc(e.target.value)}
+                              placeholder="Kelengkapan dus, nota, kondisi fisik..."
+                              className="w-full px-3 py-2 rounded-lg bg-[#071510] border border-emerald-800 text-xs text-white"
+                            />
+                          </div>
+                          <button
+                            type="submit"
+                            disabled={submittingAuction}
+                            className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs"
+                          >
+                            {submittingAuction ? 'Mengirim...' : 'Ajukan Taksiran Harga Jaminan'}
+                          </button>
+                        </form>
+                      )}
+
+                      {/* FORM OPSI 4: UPGRADE KONTRAK 2 -> KONTRAK 3 (MINIMAL RP 300.000) */}
+                      {auctionMode === 'upgrade_collateral' && canUpgradeToContract3 && (
+                        <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
+                          <div className="p-2 rounded-lg bg-sky-950/60 border border-sky-700/70 text-[11px] text-sky-200">
+                            Upgrade pengajuan Anda dari <strong>Kontrak 2 (Tanpa Jaminan)</strong> ke{' '}
+                            <strong>Kontrak 3 (Dengan Jaminan)</strong> untuk meningkatkan peluang ACC secara signifikan.
+                          </div>
+                          <div>
+                            <label className="block text-[11px] text-amber-200 mb-1">
+                              Rincian Barang Jaminan *
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={upgradeCollateralDesc}
+                              onChange={(e) => setUpgradeCollateralDesc(e.target.value)}
+                              placeholder="Contoh: HP Xiaomi Redmi Note 13 Pro+ 5G Fullset..."
+                              className="w-full px-3 py-2 rounded-lg bg-[#071510] border border-emerald-800 text-xs text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] text-amber-200 mb-1">
+                              Taksiran Harga Barang Jaminan ({ticketCurrency}) — Wajib &gt;{' '}
+                              {formatCurrencyAmount(ticketPrincipal, ticketCurrency)} *
+                            </label>
+                            <input
+                              type="number"
+                              step="any"
+                              required
+                              value={newCollateralValue}
+                              onChange={(e) => setNewCollateralValue(e.target.value)}
+                              placeholder={`Minimal > ${ticketPrincipal}`}
+                              className="w-full px-3 py-2 rounded-lg bg-[#071510] border border-amber-600 text-sm text-white"
+                            />
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                            <label className="p-2.5 rounded-lg bg-[#071510] border border-dashed border-sky-600 cursor-pointer">
+                              <span className="block font-semibold text-sky-200">
+                                Foto Jaminan 1 (Utama) *
+                              </span>
+                              <span className="text-[10px] text-emerald-400">
+                                {upgradePhotoCollateral1 ? '✓ Terlampir' : 'Pilih / ambil foto'}
+                              </span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => handleUpgradeCollateralPhoto(1, e)}
+                                className="hidden"
+                              />
+                            </label>
+                            <label className="p-2.5 rounded-lg bg-[#071510] border border-dashed border-sky-600 cursor-pointer">
+                              <span className="block font-semibold text-sky-200">
+                                Foto Jaminan 2 (Detail/Seri) *
+                              </span>
+                              <span className="text-[10px] text-emerald-400">
+                                {upgradePhotoCollateral2 ? '✓ Terlampir' : 'Pilih / ambil foto'}
+                              </span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => handleUpgradeCollateralPhoto(2, e)}
+                                className="hidden"
+                              />
+                            </label>
+                          </div>
+                          <button
+                            type="submit"
+                            disabled={submittingAuction}
+                            className="w-full py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs"
+                          >
+                            {submittingAuction
+                              ? 'Memproses Upgrade...'
+                              : 'Upgrade ke Kontrak 3 & Kirim Bukti Jaminan'}
+                          </button>
+                        </form>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -1573,14 +2016,27 @@ export default function LoanApplyPage() {
                   type="number"
                   step="0.1"
                   min="0"
-                  max="100"
+                  max={form.contractType === 'standard_unsecured' ? '20' : '100'}
                   required
                   value={form.rewardPercent}
-                  onChange={(e) => setForm({ ...form, rewardPercent: e.target.value })}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (
+                      form.contractType === 'standard_unsecured' &&
+                      val !== '' &&
+                      Number(val) > 20
+                    ) {
+                      setForm({ ...form, rewardPercent: '20' });
+                      return;
+                    }
+                    setForm({ ...form, rewardPercent: val });
+                  }}
                   className="w-full px-3 py-2.5 rounded-lg bg-[#071510] border border-emerald-800 text-sm text-white focus:outline-none focus:border-emerald-500"
                 />
                 <span className="text-[10px] text-emerald-300/75">
-                  Standar kreditur: 12,5% (dapat dinegosiasikan jika ditolak)
+                  {form.contractType === 'standard_unsecured'
+                    ? 'Khusus Kontrak 2: Imbalan jasa otomatis 20% (maks 20%, tetap bisa dinegosiasikan/lelang)'
+                    : 'Standar kreditur: 12,5% (dapat dinegosiasikan jika ditolak)'}
                 </span>
               </div>
 
@@ -1632,12 +2088,12 @@ export default function LoanApplyPage() {
                 </div>
                 <div className="text-emerald-100/80">• Grace Period: 1 hari kalender setelah jatuh tempo (denda mulai H+2).</div>
                 <div className="text-emerald-100/80">
-                  • Periode Awal: {penaltyInfo.firstPeriod}{' '}
+                  - Periode Awal: {penaltyInfo.firstPeriod}{' '}
                   {numericAmount > 0 && <strong className="text-amber-200">({formatMoney(penaltyInfo.estFirstPenalty)})</strong>}
                 </div>
                 <div className="text-emerald-100/80">• Periode Lanjutan: {penaltyInfo.nextPeriod}</div>
                 <div className="text-emerald-100/80">
-                  • Batas Maksimal Denda: {penaltyInfo.maxCap}{' '}
+                  - Batas Maksimal Denda: {penaltyInfo.maxCap}{' '}
                   {numericAmount > 0 && <strong className="text-amber-200">(Maks {formatMoney(penaltyInfo.estMaxPenalty)})</strong>}
                 </div>
               </div>
@@ -1653,7 +2109,7 @@ export default function LoanApplyPage() {
 
               <div>
                 <label className="block text-xs text-emerald-300 mb-1">
-                  Rincian / Keterangan Barang Jaminan *
+                  Rincian / Keterangan Barang Jaminan (Nilai Jaminan Wajib &gt; Pokok Pinjaman) *
                 </label>
                 <input
                   type="text"

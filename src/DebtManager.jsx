@@ -1549,7 +1549,7 @@ export default function DebtManager({
                 borrowerPhone: app.borrower_phone,
                 currency: app.currency || 'IDR',
                 totalPrincipal: Number(app.requested_amount || 0),
-                rewardPercent: Number(app.reward_percent ?? 12.5)
+                rewardPercent: Number(app.reward_percent ?? 20)
               });
             }
           }
@@ -1708,7 +1708,7 @@ export default function DebtManager({
     return rawTpl
       .replace(/\{nama\}/g, app.borrower_name || '')
       .replace(/\{nominal\}/g, nominalStr)
-      .replace(/\{jasa\}/g, String(app.reward_percent || 12.5))
+      .replace(/\{jasa\}/g, String(app.reward_percent || 20))
       .replace(/\{tenor\}/g, String(app.tenor_months || 1))
       .replace(/\{jaminan\}/g, app.collateral_desc || 'Tanpa Jaminan')
       .replace(/\{alasan\}/g, extra.reasonText ?? app.rejection_reason ?? '-')
@@ -1721,7 +1721,7 @@ export default function DebtManager({
   const openActionModal = (type, app) => {
     const defaultReason =
       type === 'counter_offer'
-        ? `Imbalan jasa (${app.reward_percent || 12.5}%) belum sesuai kesepakatan. Silakan ajukan penawaran imbalan jasa ulang.`
+        ? `Imbalan jasa (${app.reward_percent || 20}%) belum sesuai kesepakatan. Silakan ajukan penawaran imbalan jasa ulang.`
         : type === 'rejected'
         ? 'Persyaratan pengajuan belum memenuhi kriteria.'
         : '';
@@ -2391,7 +2391,7 @@ export default function DebtManager({
 
     const userId = auth?.currentUser?.uid || localStorage.getItem('wgen_last_uid') || "wgen_user";
     const principal = parseFloat(amount) || 0;
-    const bonusPct = Math.min(Math.max(parseFloat(bonusPercent) || 0, 0), 12.5);
+    const bonusPct = Math.min(Math.max(parseFloat(bonusPercent) || 0, 0), 20);
     const latePct = lateFeeMode === 'manual' ? (parseFloat(lateFeePercent) || 0) : 0;
     const totalAmt = principal + (principal * (bonusPct / 100));
     const totalInst = parseInt(installmentCount) || 1;
@@ -4939,7 +4939,7 @@ const getDynamicTierTexts = (targetCurr) => {
                         HP: <span className="text-slate-200">{app.borrower_phone}</span> • Tenor:{' '}
                         <span className="text-slate-200">{app.tenor_months} bln</span> (
                         {Number(app.is_installment) === 1 ? 'Cicilan' : 'Sekali Bayar'}) • Imbalan Jasa:{' '}
-                        <span className="text-emerald-300 font-semibold">{app.reward_percent || 12.5}%</span>
+                        <span className="text-emerald-300 font-semibold">{app.reward_percent || 20}%</span>
                       </div>
                       <div>
                         Jaminan:{' '}
@@ -5380,7 +5380,7 @@ const getDynamicTierTexts = (targetCurr) => {
                   <input 
                     type="number" 
                     min="0"
-                    max="12.5"
+                    max="20"
                     step="0.1"
                     placeholder="0"
                     value={bonusPercent}
@@ -5391,8 +5391,8 @@ const getDynamicTierTexts = (targetCurr) => {
                         return;
                       }
                       const num = parseFloat(val);
-                      if (!isNaN(num) && num > 12.5) {
-                        setBonusPercent('12.5');
+                      if (!isNaN(num) && num > 20) {
+                        setBonusPercent('20');
                       } else {
                         setBonusPercent(val);
                       }
