@@ -23,6 +23,7 @@ export async function ensureApplicationExtraColumns() {
     `ALTER TABLE loan_applications ADD COLUMN reward_percent REAL DEFAULT 12.5`,
     `ALTER TABLE loan_applications ADD COLUMN contract_type TEXT DEFAULT 'secured_collateral'`,
     `ALTER TABLE loan_applications ADD COLUMN collateral_value REAL DEFAULT 0`,
+    `ALTER TABLE loan_applications ADD COLUMN counter_principal_amount REAL DEFAULT 0`,
     `ALTER TABLE loan_applications ADD COLUMN photo_collateral_2 TEXT`,
     `ALTER TABLE loan_applications ADD COLUMN rejection_reason TEXT`,
     `ALTER TABLE loan_applications ADD COLUMN collateral_feedback TEXT`,
@@ -313,17 +314,15 @@ export async function resubmitLoanCounterOffer(applicationId, newRewardPercent, 
   }
 
   if (auctionType === 'upgrade_to_collateral') {
-    const nextColVal = Number(extraPayload.collateralValue);
-    const currentPrincipal = Number(existing.requested_amount || 0);
-    if (isNaN(nextColVal) || nextColVal <= currentPrincipal) {
-      throw new Error('Taksiran harga jaminan wajib lebih besar dari pokok pinjaman.');
-    }
     const nextColDesc = String(extraPayload.collateralDesc || '').trim();
     const photo1 = extraPayload.photoCollateral1 || '';
     const photo2 = extraPayload.photoCollateral2 || '';
     if (!nextColDesc || !photo1 || !photo2) {
       throw new Error('Deskripsi barang dan 2 foto bukti fisik jaminan wajib dilengkapi.');
     }
+
+    const rawColVal = Number(extraPayload.collateralValue);
+    const nextColVal = !isNaN(rawColVal) && rawColVal > 0 ? rawColVal : Number(existing.collateral_value || 0);
 
     await turso.execute({
       sql: `UPDATE loan_applications
@@ -355,13 +354,14 @@ export async function resubmitLoanCounterOffer(applicationId, newRewardPercent, 
 }
 
 /**
- * 10. Kreditur memberi feedback jaminan atau menolak dengan alasan lelang imbalan jasa
+ * 10. Kreditur memberi feedback jaminan, lelang pokok, atau menolak/lelang imbalan jasa
  */
 export async function updateApplicationFeedback({
   applicationId,
   status, // 'pending' | 'counter_offer' | 'rejected' | 'approved'
   rejectionReason = null,
-  collateralFeedback = null
+  collateralFeedback = null,
+  counterPrincipalAmount = null
 }) {
   await ensureApplicationExtraColumns();
   const nowIso = new Date().toISOString();
@@ -370,11 +370,16 @@ export async function updateApplicationFeedback({
           SET status = COALESCE(?, status),
               rejection_reason = ?,
               collateral_feedback = COALESCE(?, collateral_feedback),
+              counter_principal_amount = COALESCE(?, counter_principal_amount),
               updated_at = ?
           WHERE id = ?`,
-    args: [status, rejectionReason, collateralFeedback, nowIso, applicationId]
+    args: [status, rejectionReason, collateralFeedback, counterPrincipalAmount, nowIso, applicationId]
   });
 }
+
+/**
+ * 10. Kreditur memberi feedback jaminan atau menolak dengan alasan lelang imbalan jasa
+ */
 
 /**
  * 11. Peminjam melapor sudah transfer cicilan di halaman tiket (tersimpan ke Turso)

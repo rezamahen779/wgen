@@ -1741,78 +1741,86 @@ const newPaymentEntry = {
   };
 
  const handleApproveApplication = (app) => {
-    const todayStr = formatLocalDateStr(new Date());
-    const months = Number(app.tenor_months) || 1;
-    const dueObj = addMonthsSafely(todayStr, months);
-    const dueStr = dueObj ? formatLocalDateStr(dueObj) : '';
+  const todayStr = formatLocalDateStr(new Date());
+  const months = Number(app.tenor_months) || 1;
+  const dueObj = addMonthsSafely(todayStr, months);
+  const dueStr = dueObj ? formatLocalDateStr(dueObj) : '';
 
-    // 1. Ambil persentase imbalan jasa dari pengajuan/lelang QR (bukan 0)
-    const appliedReward =
-      app.reward_percent !== undefined && app.reward_percent !== null && app.reward_percent !== ''
-        ? Number(app.reward_percent)
-        : Number(app.has_collateral) === 1
-        ? 12.5
-        : 20;
+  // 1. Ambil persentase imbalan jasa dari pengajuan/lelang QR (bukan 0)
+  const appliedReward =
+    app.reward_percent !== undefined && app.reward_percent !== null && app.reward_percent !== ''
+      ? Number(app.reward_percent)
+      : Number(app.has_collateral) === 1
+      ? 12.5
+      : 20;
 
-    // 2. Deteksi otomatis apakah termasuk Pinjaman Mikro (tanpa jaminan & <= 500rb)
-    const isMicroApp =
-      Number(app.has_collateral) !== 1 &&
-      (app.currency || 'IDR') === 'IDR' &&
-      Number(app.requested_amount || 0) <= 500000;
+  // 2. Deteksi otomatis apakah termasuk Pinjaman Mikro (tanpa jaminan & <= 500rb)
+  const isMicroApp =
+    Number(app.has_collateral) !== 1 &&
+    (app.currency || 'IDR') === 'IDR' &&
+    Number(app.requested_amount || 0) <= 500000;
 
-    // 3. Ambil rekening/e-wallet default pemberi pinjaman (dari pengaturan QR atau riwayat terakhir)
-    const savedAccountInfo =
-      qrLinkData?.payment_account_info ||
-      localStorage.getItem('wgen_default_payment_account') ||
-      debts.find((d) => d.paymentAccountInfo)?.paymentAccountInfo ||
-      '';
+  // 3. Ambil rekening/e-wallet default pemberi pinjaman (dari pengaturan QR atau riwayat terakhir)
+  const savedAccountInfo =
+    qrLinkData?.payment_account_info ||
+    localStorage.getItem('wgen_default_payment_account') ||
+    debts.find((d) => d.paymentAccountInfo)?.paymentAccountInfo ||
+    '';
 
-    const savedMethodKey =
-      qrLinkData?.payment_method_key ||
-      localStorage.getItem('wgen_default_payment_method') ||
-      'transfer';
+  const savedMethodKey =
+    qrLinkData?.payment_method_key ||
+    localStorage.getItem('wgen_default_payment_method') ||
+    'transfer';
 
-    setCurrentDebtId(null);
-    setName(app.borrower_name || '');
-    setLenderName(
-      qrLinkData?.lender_name ||
-        auth?.currentUser?.displayName ||
-        localStorage.getItem('wgen_username') ||
-        ''
-    );
-    setDebtorIdNo(app.debtor_id || '');
-    setDebtorAddress(app.debtor_address || '');
-    setBorrowerPhone(app.borrower_phone || '');
-    setEmergencyPhone(app.emergency_phone || '');
-    setDebtCurrency(app.currency || managerCurrency || 'IDR');
-    setAmount(String(app.requested_amount || ''));
+  // 4. Prioritaskan nominal pokok hasil lelang jika tersedia
+  const finalPrincipalAmount =
+    app.counter_principal_amount !== undefined &&
+    app.counter_principal_amount !== null &&
+    Number(app.counter_principal_amount) > 0
+      ? Number(app.counter_principal_amount)
+      : Number(app.requested_amount || '');
 
-    // Otomatis isi Imbalan Jasa & Mode Mikro
-    setBonusPercent(String(appliedReward));
-    setBonusType('bonus');
-    setLateFeeMode(isMicroApp ? 'micro' : 'auto');
+  setCurrentDebtId(null);
+  setName(app.borrower_name || '');
+  setLenderName(
+    qrLinkData?.lender_name ||
+      auth?.currentUser?.displayName ||
+      localStorage.getItem('wgen_username') ||
+      ''
+  );
+  setDebtorIdNo(app.debtor_id || '');
+  setDebtorAddress(app.debtor_address || '');
+  setBorrowerPhone(app.borrower_phone || '');
+  setEmergencyPhone(app.emergency_phone || '');
+  setDebtCurrency(app.currency || managerCurrency || 'IDR');
+  setAmount(finalPrincipalAmount ? String(finalPrincipalAmount) : '');
 
-    // Otomatis isi Metode & Rekening Tujuan Pembayaran
-    setPaymentMethodKey(savedMethodKey);
-    setPaymentAccountInfo(savedAccountInfo);
+  // Otomatis isi Imbalan Jasa & Mode Mikro
+  setBonusPercent(String(appliedReward));
+  setBonusType('bonus');
+  setLateFeeMode(isMicroApp ? 'micro' : 'auto');
 
-    setStartDate(todayStr);
-    setDueDate(dueStr);
-    setIsInstallment(Number(app.is_installment) === 1);
-    setInstallmentCount(String(months));
-    setPaidInstallments('0');
-    setCollateral(Number(app.has_collateral) === 1);
-    setCollateralDesc(app.collateral_desc || '');
-    setPhotoIdDebtor(app.photo_id || '');
-    setPhotoSelfieDebtor(app.photo_selfie || '');
-    setPhotoSelfieIdDebtor(app.photo_selfie_id || '');
-    setPhotoCollateral1(app.photo_collateral_1 || '');
-    setPhotoCollateral2(app.photo_collateral_2 || '');
-    setApprovedApplicationId(app.id);
+  // Otomatis isi Metode & Rekening Tujuan Pembayaran
+  setPaymentMethodKey(savedMethodKey);
+  setPaymentAccountInfo(savedAccountInfo);
 
-    setShowInboxModal(false);
-    setIsDebtModalOpen(true);
-  };
+  setStartDate(todayStr);
+  setDueDate(dueStr);
+  setIsInstallment(Number(app.is_installment) === 1);
+  setInstallmentCount(String(months));
+  setPaidInstallments('0');
+  setCollateral(Number(app.has_collateral) === 1);
+  setCollateralDesc(app.collateral_desc || '');
+  setPhotoIdDebtor(app.photo_id || '');
+  setPhotoSelfieDebtor(app.photo_selfie || '');
+  setPhotoSelfieIdDebtor(app.photo_selfie_id || '');
+  setPhotoCollateral1(app.photo_collateral_1 || '');
+  setPhotoCollateral2(app.photo_collateral_2 || '');
+  setApprovedApplicationId(app.id);
+
+  setShowInboxModal(false);
+  setIsDebtModalOpen(true);
+};
 
   const handleRejectApplication = async (appId) => {
     await updateApplicationStatus(appId, 'rejected');
@@ -1820,17 +1828,19 @@ const newPaymentEntry = {
   };
   // === STATE FEEDBACK JAMINAN, LELANG IMBALAN JASA & TEMPLATE WA DINAMIS ===
   const DEFAULT_WA_TEMPLATES = {
-    approved:
-      'Halo {nama}, pengajuan pinjaman Anda sebesar {nominal} (Imbalan jasa {jasa}%, tenor {tenor} bln) telah DISETUJUI.\nCek detail status & kontrak Anda di:\n{link_status}',
-    counter_offer:
-      'Halo {nama}, pengajuan pinjaman Anda sebesar {nominal} belum disepakati pada imbalan jasa {jasa}%.\nSilakan ajukan ulang penawaran imbalan jasa (Sistem Lelang) melalui link berikut:\n{link_status}',
-    upgrade_collateral:
-      'Halo {nama}, untuk pengajuan pinjaman sebesar {nominal}, silakan UPGRADE kontrak Anda ke Kontrak 3 (Dengan Jaminan) agar dapat di pertimbangkan.\nKlik link berikut untuk melampirkan data/foto jaminan:\n{link_status}',
-    collateral_drop:
-      'Halo {nama}, terkait jaminan ({jaminan}) untuk pengajuan {nominal}:\n{feedback_jaminan}\n\nJika saya sedang tidak di rumah, silakan antar/drop jaminan ke alamat:\n{alamat_drop}\n\nPantau status pengajuan Anda di:\n{link_status}',
-    rejected:
-      'Halo {nama}, mohon maaf pengajuan pinjaman Anda sebesar {nominal} belum dapat kami setujui.\nAlasan: {alasan}\nDetail status: {link_status}'
-  };
+  approved:
+    'Halo {nama}, pengajuan pinjaman Anda sebesar {nominal} (Pokok: {pokok}, Imbalan jasa {jasa}%, tenor {tenor} bln) telah DISETUJUI.\nCek detail status & kontrak Anda di:\n{link_status}',
+  counter_offer:
+    'Halo {nama}, pengajuan pinjaman Anda sebesar {nominal} belum disepakati pada imbalan jasa {jasa}%.\nSilakan ajukan ulang penawaran imbalan jasa (Sistem Lelang) melalui link berikut:\n{link_status}',
+  principal_offer:
+    'Halo {nama}, untuk pengajuan pinjaman Anda (awal {nominal}), kami mengajukan penawaran lelang pokok pinjaman sebesar {pokok} (Imbalan jasa {jasa}%, tenor {tenor} bln).\n{alasan}\nSilakan konfirmasi atau ajukan penawaran balik melalui link berikut:\n{link_status}',
+  upgrade_collateral:
+    'Halo {nama}, untuk pengajuan pinjaman sebesar {nominal}, silakan UPGRADE kontrak Anda ke Kontrak 3 (Dengan Jaminan) agar dapat di pertimbangkan.\nKlik link berikut untuk melampirkan data/foto jaminan:\n{link_status}',
+  collateral_drop:
+    'Halo {nama}, terkait jaminan ({jaminan}) untuk pengajuan {nominal}:\n{feedback_jaminan}\n\nJika saya sedang tidak di rumah, silakan antar/drop jaminan ke alamat:\n{alamat_drop}\n\nPantau status pengajuan Anda di:\n{link_status}',
+  rejected:
+    'Halo {nama}, mohon maaf pengajuan pinjaman Anda sebesar {nominal} belum dapat kami setujui.\nAlasan: {alasan}\nDetail status: {link_status}'
+};
 
   const [waTemplates, setWaTemplates] = useState(() => {
     try {
@@ -1846,16 +1856,17 @@ const newPaymentEntry = {
   });
 
   // Modal Aksi Kreditur (Lelang Jasa / Feedback Jaminan / Drop Jaminan / Edit WA)
-  const [actionModal, setActionModal] = useState({
-    open: false,
-    type: 'collateral_drop', // 'approved' | 'counter_offer' | 'collateral_drop' | 'rejected'
-    app: null,
-    reasonText: '',
-    collateralNote: '',
-    dropAddress: '',
-    collateralReceived: false,
-    waMessage: ''
-  });
+ const [actionModal, setActionModal] = useState({
+  open: false,
+  type: 'collateral_drop', // 'approved' | 'counter_offer' | 'principal_offer' | 'upgrade_collateral' | 'collateral_drop' | 'rejected'
+  app: null,
+  offeredPrincipal: '',
+  reasonText: '',
+  collateralNote: '',
+  dropAddress: '',
+  collateralReceived: false,
+  waMessage: ''
+});
 
   // Helper format nomor HP ke 628xxx untuk wa.me
   const formatWaPhone = (rawPhone) => {
@@ -1865,112 +1876,150 @@ const newPaymentEntry = {
   };
 
   // Helper render template WA dengan variabel dinamis
-  const buildWaMessage = (templateKey, app, extra = {}) => {
-    const rawTpl = waTemplates[templateKey] || '';
-    const linkStatus = `${PUBLIC_WEB_ORIGIN}/apply?ticket=${app.id}`;
-    const nominalStr = `${app.currency} ${Number(app.requested_amount || 0).toLocaleString('id-ID')}`;
+ const buildWaMessage = (templateKey, app, extra = {}) => {
+  const rawTpl = waTemplates[templateKey] || '';
+  const linkStatus = `${PUBLIC_WEB_ORIGIN}/apply?ticket=${app.id}`;
+  const currCode = app.currency || managerCurrency || 'IDR';
+  const basePrincipal = Number(app.requested_amount || 0);
+  const activePrincipal =
+    extra.offeredPrincipal !== undefined && extra.offeredPrincipal !== ''
+      ? Number(extra.offeredPrincipal) || basePrincipal
+      : Number(app.counter_principal_amount || basePrincipal);
 
-    return rawTpl
-      .replace(/\{nama\}/g, app.borrower_name || '')
-      .replace(/\{nominal\}/g, nominalStr)
-      .replace(/\{jasa\}/g, String(app.reward_percent || 20))
-      .replace(/\{tenor\}/g, String(app.tenor_months || 1))
-      .replace(/\{jaminan\}/g, app.collateral_desc || 'Tanpa Jaminan')
-      .replace(/\{alasan\}/g, extra.reasonText ?? app.rejection_reason ?? '-')
-      .replace(/\{feedback_jaminan\}/g, extra.collateralNote ?? app.collateral_feedback ?? '-')
-      .replace(/\{alamat_drop\}/g, extra.dropAddress ?? dropAddressDefault)
-      .replace(/\{link_status\}/g, linkStatus);
-  };
+  const nominalStr = `${currCode} ${basePrincipal.toLocaleString('id-ID')}`;
+  const pokokStr = `${currCode} ${activePrincipal.toLocaleString('id-ID')}`;
+
+  return rawTpl
+    .replace(/\{nama\}/g, app.borrower_name || '')
+    .replace(/\{nominal\}/g, nominalStr)
+    .replace(/\{pokok\}/g, pokokStr)
+    .replace(/\{jasa\}/g, String(app.reward_percent ?? 20))
+    .replace(/\{tenor\}/g, String(app.tenor_months || 1))
+    .replace(/\{jaminan\}/g, app.collateral_desc || 'Tanpa Jaminan')
+    .replace(/\{alasan\}/g, extra.reasonText ?? app.rejection_reason ?? '-')
+    .replace(/\{feedback_jaminan\}/g, extra.collateralNote ?? app.collateral_feedback ?? '-')
+    .replace(/\{alamat_drop\}/g, extra.dropAddress ?? dropAddressDefault)
+    .replace(/\{link_status\}/g, linkStatus);
+};
 
   // Buka Modal Aksi (Lelang Jasa / Feedback & Drop Jaminan / Tolak / Kabari ACC)
   const openActionModal = (type, app) => {
-    const defaultReason =
-      type === 'counter_offer'
-        ? `Imbalan jasa (${app.reward_percent || 20}%) belum sesuai kesepakatan. Silakan ajukan penawaran imbalan jasa ulang.`
-        : type === 'upgrade_collateral'
-        ? 'Pengajuan tanpa jaminan belum dapat disetujui untuk nominal ini. Silakan upgrade ke Kontrak 3 dengan melampirkan jaminan.'
-        : type === 'rejected'
-        ? 'Persyaratan pengajuan belum memenuhi kriteria.'
-        : '';
-        
-    const defaultCollateralNote =
-      app.collateral_feedback ||
-      'Mohon serahkan/antarkan unit jaminan beserta kelengkapannya untuk pengecekan fisik.';
+  const defaultPrincipal = String(app.counter_principal_amount || app.requested_amount || '');
+  const defaultReason =
+    type === 'counter_offer'
+      ? `Imbalan jasa (${app.reward_percent ?? 20}%) belum sesuai kesepakatan. Silakan ajukan penawaran imbalan jasa ulang.`
+      : type === 'principal_offer'
+      ? `Penyesuaian nominal pokok pinjaman menjadi ${app.currency || managerCurrency || 'IDR'} ${Number(defaultPrincipal || 0).toLocaleString('id-ID')}.`
+      : type === 'upgrade_collateral'
+      ? 'Pengajuan tanpa jaminan belum dapat disetujui untuk nominal ini. Silakan upgrade ke Kontrak 3 dengan melampirkan jaminan.'
+      : type === 'rejected'
+      ? 'Persyaratan pengajuan belum memenuhi kriteria.'
+      : '';
 
-    const initialMsg = buildWaMessage(type, app, {
-      reasonText: defaultReason,
-      collateralNote: defaultCollateralNote,
-      dropAddress: dropAddressDefault
-    });
+  const defaultCollateralNote =
+    app.collateral_feedback ||
+    'Mohon serahkan/antarkan unit jaminan beserta kelengkapannya untuk pengecekan fisik.';
 
-    setActionModal({
-      open: true,
-      type,
-      app,
-      reasonText: defaultReason,
-      collateralNote: defaultCollateralNote,
-      dropAddress: dropAddressDefault,
-      collateralReceived: false,
-      waMessage: initialMsg
-    });
-  };
+  const initialMsg = buildWaMessage(type, app, {
+    offeredPrincipal: defaultPrincipal,
+    reasonText: defaultReason,
+    collateralNote: defaultCollateralNote,
+    dropAddress: dropAddressDefault
+  });
+
+  setActionModal({
+    open: true,
+    type,
+    app,
+    offeredPrincipal: defaultPrincipal,
+    reasonText: defaultReason,
+    collateralNote: defaultCollateralNote,
+    dropAddress: dropAddressDefault,
+    collateralReceived: false,
+    waMessage: initialMsg
+  });
+};
+      
 
   // Simpan perubahan database + (opsional) buka WhatsApp
   const handleConfirmActionModal = async (sendToWa = false) => {
-    const { type, app, reasonText, collateralNote, dropAddress, collateralReceived, waMessage } = actionModal;
-    if (!app) return;
+  const { type, app, offeredPrincipal, reasonText, collateralNote, dropAddress, collateralReceived, waMessage } = actionModal;
+  if (!app) return;
 
-    try {
-      if (type === 'counter_offer' || type === 'upgrade_collateral') {
-        await updateApplicationFeedback({
-          applicationId: app.id,
-          status: 'counter_offer',
-          rejectionReason: reasonText
-        });
-        setIncomingApps((prev) =>
-          prev.map((item) =>
-            item.id === app.id ? { ...item, status: 'counter_offer', rejection_reason: reasonText } : item
-          )
-        );
-      } else if (type === 'rejected') {
-          await updateApplicationFeedback({
-          applicationId: app.id,
-          status: 'rejected',
-          rejectionReason: reasonText
-        });
-        setIncomingApps((prev) => prev.filter((item) => item.id !== app.id));
-      } else if (type === 'collateral_drop') {
-        const finalCollateralFeedback = collateralReceived
-          ? `[✓ BARANG JAMINAN DITERIMA] ${collateralNote}`
-          : `[INSTRUKSI SERAH TERIMA / DROP JAMINAN] ${collateralNote}\nAlamat Drop-Off: ${dropAddress}`;
+  try {
+    if (type === 'principal_offer') {
+      const cleanPrincipal = Number(String(offeredPrincipal || '').replace(/\D/g, '')) || Number(app.requested_amount || 0);
+      const formattedNote = `[LELANG POKOK: ${app.currency || managerCurrency || 'IDR'} ${cleanPrincipal.toLocaleString('id-ID')}] ${reasonText || ''}`.trim();
 
-        await updateApplicationFeedback({
-          applicationId: app.id,
-          status: app.status,
-          rejectionReason: app.rejection_reason || null,
-          collateralFeedback: finalCollateralFeedback
-        });
+      await updateApplicationFeedback({
+        applicationId: app.id,
+        status: 'counter_offer',
+        rejectionReason: formattedNote,
+        counterPrincipalAmount: cleanPrincipal
+      });
 
-        localStorage.setItem('wgen_collateral_drop_address', dropAddress);
-        setDropAddressDefault(dropAddress);
+      setIncomingApps((prev) =>
+        prev.map((item) =>
+          item.id === app.id
+            ? {
+                ...item,
+                status: 'counter_offer',
+                rejection_reason: formattedNote,
+                counter_principal_amount: cleanPrincipal
+              }
+            : item
+        )
+      );
+    } else if (type === 'counter_offer' || type === 'upgrade_collateral') {
+      await updateApplicationFeedback({
+        applicationId: app.id,
+        status: 'counter_offer',
+        rejectionReason: reasonText
+      });
+      setIncomingApps((prev) =>
+        prev.map((item) =>
+          item.id === app.id ? { ...item, status: 'counter_offer', rejection_reason: reasonText } : item
+        )
+      );
+    } else if (type === 'rejected') {
+      await updateApplicationFeedback({
+        applicationId: app.id,
+        status: 'rejected',
+        rejectionReason: reasonText
+      });
+      setIncomingApps((prev) => prev.filter((item) => item.id !== app.id));
+    } else if (type === 'collateral_drop') {
+      const finalCollateralFeedback = collateralReceived
+        ? `[✓ BARANG JAMINAN DITERIMA] ${collateralNote}`
+        : `[INSTRUKSI SERAH TERIMA / DROP JAMINAN] ${collateralNote}\nAlamat Drop-Off: ${dropAddress}`;
 
-        setIncomingApps((prev) =>
-          prev.map((item) =>
-            item.id === app.id ? { ...item, collateral_feedback: finalCollateralFeedback } : item
-          )
-        );
-      }
+      await updateApplicationFeedback({
+        applicationId: app.id,
+        status: app.status,
+        rejectionReason: app.rejection_reason || null,
+        collateralFeedback: finalCollateralFeedback
+      });
 
-      if (sendToWa && app.borrower_phone) {
-        const phone = formatWaPhone(app.borrower_phone);
-        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(waMessage)}`, '_blank');
-      }
+      localStorage.setItem('wgen_collateral_drop_address', dropAddress);
+      setDropAddressDefault(dropAddress);
 
-      setActionModal((prev) => ({ ...prev, open: false }));
-    } catch (err) {
-      alert('Gagal menyimpan pembaruan status: ' + err.message);
+      setIncomingApps((prev) =>
+        prev.map((item) =>
+          item.id === app.id ? { ...item, collateral_feedback: finalCollateralFeedback } : item
+        )
+      );
     }
-  };
+
+    if (sendToWa && app.borrower_phone) {
+      const phone = formatWaPhone(app.borrower_phone);
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(waMessage)}`, '_blank');
+    }
+
+    setActionModal((prev) => ({ ...prev, open: false }));
+  } catch (err) {
+    alert('Gagal menyimpan pembaruan status: ' + err.message);
+  }
+};
 
   // Simpan teks pesan saat ini menjadi Template Default permanen
   const handleSaveCurrentAsTemplate = () => {
@@ -5112,112 +5161,134 @@ const getDynamicTierTexts = (targetCurr) => {
               </div>
             ) : (
               <div className="space-y-3">
-                {incomingApps.map((app) => (
-                  <div key={app.id} className={`p-4 rounded-xl border space-y-2.5 text-xs ${bgInnerBox}`}>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-sm">
-                          {app.borrower_name && String(app.borrower_name).trim().toLowerCase() !== ''
-                            ? app.borrower_name
-                            : 'Peminjam (Tanpa Nama)'}
-                        </span>
-                        {app.status === 'counter_offer' && (
-                          <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-semibold">
-                            Lelang Jasa • Tawaran Terkini: {app.reward_percent || 0}%
+                {incomingApps.map((app) => {
+                  const hasCounterPrincipal =
+                    app.counter_principal_amount !== undefined &&
+                    app.counter_principal_amount !== null &&
+                    Number(app.counter_principal_amount) > 0;
+
+                  return (
+                    <div key={app.id} className={`p-4 rounded-xl border space-y-2.5 text-xs ${bgInnerBox}`}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-sm">
+                            {app.borrower_name && String(app.borrower_name).trim().toLowerCase() !== ''
+                              ? app.borrower_name
+                              : 'Peminjam (Tanpa Nama)'}
                           </span>
-                        )}
-                      </div>
-                      <span className="font-mono font-bold text-emerald-400 text-sm">
-                        {app.currency} {Number(app.requested_amount || 0).toLocaleString()}
-                      </span>
-                    </div>                   
-                     <div className="text-slate-400 space-y-1">
-                      <div>
-                        HP: <span className="text-slate-200">{app.borrower_phone}</span> • Tenor:{' '}
-                        <span className="text-slate-200">{app.tenor_months} bln</span> (
-                        {Number(app.is_installment) === 1 ? 'Cicilan' : 'Sekali Bayar'}) • Imbalan Jasa:{' '}
-                        <span className="text-emerald-300 font-semibold">{app.reward_percent || 20}%</span>
-                      </div>
-                      <div>
-                        Jaminan:{' '}
-                        <span className="text-slate-200 font-medium">
-                          {Number(app.has_collateral) === 1 ? app.collateral_desc || 'Ada' : 'Tanpa Jaminan'}
+                          {app.status === 'counter_offer' && (
+                            <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-semibold">
+                              Lelang Jasa • Tawaran Terkini: {app.reward_percent || 0}%
+                            </span>
+                          )}
+                          {hasCounterPrincipal && (
+                            <span className="px-2 py-0.5 rounded bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-[10px] font-semibold">
+                              Lelang Pokok: {app.currency} {Number(app.counter_principal_amount).toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                        <span className="font-mono font-bold text-emerald-400 text-sm">
+                          {app.currency} {Number(app.requested_amount || 0).toLocaleString()}
                         </span>
                       </div>
-                      {app.collateral_feedback && (
-                        <div className="p-2 rounded bg-emerald-950/50 border border-emerald-700/50 text-emerald-200 text-[11px]">
-                          <strong>Status Jaminan:</strong> {app.collateral_feedback}
+
+                      <div className="text-slate-400 space-y-1">
+                        <div>
+                          HP: <span className="text-slate-200">{app.borrower_phone}</span> • Tenor:{' '}
+                          <span className="text-slate-200">{app.tenor_months} bln</span> (
+                          {Number(app.is_installment) === 1 ? 'Cicilan' : 'Sekali Bayar'}) • Imbalan Jasa:{' '}
+                          <span className="text-emerald-300 font-semibold">{app.reward_percent || 20}%</span>
                         </div>
-                      )}
-                      {app.notes && <div className="text-slate-300">Catatan: {app.notes}</div>}
-                    </div>
+                        <div>
+                          Jaminan:{' '}
+                          <span className="text-slate-200 font-medium">
+                            {Number(app.has_collateral) === 1 ? app.collateral_desc || 'Ada' : 'Tanpa Jaminan'}
+                          </span>
+                        </div>
+                        {app.collateral_feedback && (
+                          <div className="p-2 rounded bg-emerald-950/50 border border-emerald-700/50 text-emerald-200 text-[11px]">
+                            <strong>Status Jaminan:</strong> {app.collateral_feedback}
+                          </div>
+                        )}
+                        {app.notes && <div className="text-slate-300">Catatan: {app.notes}</div>}
+                      </div>
 
-                    {/* Tombol Aksi Lengkap */}
-                    <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-700/50">
-                     {/* 1. Feedback & Drop Jaminan (Jika sudah ada jaminan) OR Minta Upgrade (Jika tanpa jaminan) */}
-                      {Number(app.has_collateral) === 1 ? (
+                      {/* Tombol Aksi Lengkap */}
+                      <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-700/50">
+                        {/* 1. Feedback & Drop Jaminan (Jika sudah ada jaminan) OR Minta Upgrade (Jika tanpa jaminan) */}
+                        {Number(app.has_collateral) === 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => openActionModal('collateral_drop', app)}
+                            className="px-2.5 py-1.5 rounded-lg bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/40 text-sky-300 font-semibold"
+                          >
+                            Jaminan & Alamat Drop
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => openActionModal('upgrade_collateral', app)}
+                            className="px-2.5 py-1.5 rounded-lg bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/40 text-sky-300 font-semibold"
+                          >
+                            ★ Minta Upgrade Jaminan
+                          </button>
+                        )}
+
+                        {/* 2. Sistem Lelang Imbalan Jasa */}
                         <button
                           type="button"
-                          onClick={() => openActionModal('collateral_drop', app)}
-                          className="px-2.5 py-1.5 rounded-lg bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/40 text-sky-300 font-semibold"
+                          onClick={() => openActionModal('counter_offer', app)}
+                          className="px-2.5 py-1.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 font-semibold"
                         >
-                          Jaminan & Alamat Drop
+                          Lelang Jasa
                         </button>
-                      ) : (
+
+                        {/* 2b. Sistem Lelang Pokok Pinjaman */}
                         <button
                           type="button"
-                          onClick={() => openActionModal('upgrade_collateral', app)}
-                          className="px-2.5 py-1.5 rounded-lg bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/40 text-sky-300 font-semibold"
+                          onClick={() => openActionModal('principal_offer', app)}
+                          className="px-2.5 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 font-semibold"
                         >
-                          ★ Minta Upgrade Jaminan
+                          Lelang Pokok
                         </button>
-                      )}
 
-                      {/* 2. Sistem Lelang Imbalan Jasa */}
-                      <button
-                        type="button"
-                        onClick={() => openActionModal('counter_offer', app)}
-                        className="px-2.5 py-1.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 font-semibold"
-                      >
-                        Lelang Jasa
-                      </button>
+                        {/* 3. Tolak Permanen */}
+                        <button
+                          type="button"
+                          onClick={() => openActionModal('rejected', app)}
+                          className="px-2.5 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-400 font-semibold"
+                        >
+                          Tolak
+                        </button>
 
-                      {/* 3. Tolak Permanen */}
-                      <button
-                        type="button"
-                        onClick={() => openActionModal('rejected', app)}
-                        className="px-2.5 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-400 font-semibold"
-                      >
-                        Tolak
-                      </button>
+                        {/* 4. Kabari ACC via WA */}
+                        <button
+                          type="button"
+                          onClick={() => openActionModal('approved', app)}
+                          className="px-2.5 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 font-semibold"
+                        >
+                          WA Info ACC
+                        </button>
 
-                      {/* 4. Kabari ACC via WA */}
-                      <button
-                        type="button"
-                        onClick={() => openActionModal('approved', app)}
-                        className="px-2.5 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 font-semibold"
-                      >
-                        WA Info ACC
-                      </button>
-
-                      {/* 5. Review & Masukkan ke Catatan Piutang */}
-                      <button
-                        type="button"
-                        onClick={() => handleApproveApplication(app)}
-                        className={`px-3.5 py-1.5 rounded-lg bg-gradient-to-r ${themeStyle.gradientBtn} text-white font-bold`}
-                      >
-                        Review & Setujui
-                      </button>
+                        {/* 5. Review & Masukkan ke Catatan Piutang */}
+                        <button
+                          type="button"
+                          onClick={() => handleApproveApplication(app)}
+                          className={`px-3.5 py-1.5 rounded-lg bg-gradient-to-r ${themeStyle.gradientBtn} text-white font-bold`}
+                        >
+                          Review & Setujui
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* MODAL AKSI: Feedback Jaminan / Drop-Off / Lelang Jasa / Edit Template WA */}
+      {/* MODAL AKSI: Feedback Jaminan / Drop-Off / Lelang Jasa / Lelang Pokok / Edit Template WA */}
       {actionModal.open && actionModal.app && (
         <div className="fixed inset-0 z-[1000] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
           <div className={`border rounded-2xl max-w-lg w-full max-h-[88vh] overflow-y-auto p-5 space-y-4 shadow-2xl ${modalBg}`}>
@@ -5225,6 +5296,7 @@ const getDynamicTierTexts = (targetCurr) => {
               <h4 className="text-sm font-bold text-white">
                 {actionModal.type === 'collateral_drop' && 'Feedback & Serah Terima / Drop Jaminan'}
                 {actionModal.type === 'counter_offer' && 'Sistem Lelang Imbalan Jasa (Minta Penawaran Ulang)'}
+                {actionModal.type === 'principal_offer' && 'Sistem Lelang Pokok Pinjaman (Tentukan Nominal Pokok)'}
                 {actionModal.type === 'upgrade_collateral' && 'Minta Peminjam Upgrade ke Kontrak 3 (Jaminan)'}
                 {actionModal.type === 'rejected' && 'Tolak Pengajuan Pinjaman'}
                 {actionModal.type === 'approved' && 'Kirim Notifikasi Persetujuan (ACC) via WhatsApp'}
@@ -5310,6 +5382,56 @@ const getDynamicTierTexts = (targetCurr) => {
                 </>
               )}
 
+              {/* Kontrol Khusus Lelang Pokok Pinjaman */}
+              {actionModal.type === 'principal_offer' && (
+                <div className="space-y-2.5">
+                  <div>
+                    <label className="block text-slate-300 mb-1">
+                      Nominal Pokok Tawaran / Lelang ({actionModal.app.currency || managerCurrency}):
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatNumberWithSeparator(actionModal.offeredPrincipal)}
+                      onChange={(e) => {
+                        const digits = e.target.value.replace(/\D/g, '');
+                        const autoNote = `Penyesuaian nominal pokok pinjaman menjadi ${actionModal.app.currency || managerCurrency} ${Number(digits || 0).toLocaleString('id-ID')}.`;
+                        setActionModal((prev) => ({
+                          ...prev,
+                          offeredPrincipal: digits,
+                          reasonText: autoNote,
+                          waMessage: buildWaMessage('principal_offer', prev.app, {
+                            offeredPrincipal: digits,
+                            reasonText: autoNote
+                          })
+                        }));
+                      }}
+                      className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-indigo-500/60 text-white font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 mb-1">Catatan / Syarat Lelang Pokok:</label>
+                    <textarea
+                      rows={2}
+                      value={actionModal.reasonText}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setActionModal((prev) => ({
+                          ...prev,
+                          reasonText: val,
+                          waMessage: buildWaMessage('principal_offer', prev.app, {
+                            offeredPrincipal: prev.offeredPrincipal,
+                            reasonText: val
+                          })
+                        }));
+                      }}
+                      className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white"
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Kontrol Alasan Lelang Jasa / Penolakan */}
               {(actionModal.type === 'counter_offer' || actionModal.type === 'rejected') && (
                 <div>
@@ -5353,7 +5475,7 @@ const getDynamicTierTexts = (targetCurr) => {
                   className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-emerald-700/60 text-white font-sans leading-relaxed"
                 />
                 <div className="text-[10px] text-slate-400 mt-1">
-                  Variabel otomatis: {'{nama}'}, {'{nominal}'}, {'{jasa}'}, {'{tenor}'}, {'{jaminan}'}, {'{alamat_drop}'}, {'{link_status}'}
+                  Variabel otomatis: {'{nama}'}, {'{nominal}'}, {'{pokok}'}, {'{jasa}'}, {'{tenor}'}, {'{jaminan}'}, {'{alamat_drop}'}, {'{link_status}'}
                 </div>
               </div>
             </div>
@@ -5379,7 +5501,7 @@ const getDynamicTierTexts = (targetCurr) => {
           </div>
         </div>
       )}
-
+      
       {/* MODAL: Form Tambah / Edit Pinjaman */}
       {isDebtModalOpen && (
         <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 pb-24 sm:pb-6 overflow-y-auto">

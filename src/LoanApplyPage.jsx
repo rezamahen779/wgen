@@ -405,10 +405,21 @@ function extractInstallmentProgress(ticketData) {
 // Deteksi tipe kontrak dari record ticketData
 function detectTicketContractType(ticketData) {
   if (!ticketData) return 'standard_unsecured';
-  if (ticketData.contract_type) return ticketData.contract_type;
-  if (Number(ticketData.has_collateral) === 1 || Boolean(ticketData.has_collateral)) {
+  if (ticketData.contract_type === 'secured_collateral') return 'secured_collateral';
+  if (ticketData.contract_type === 'micro_unsecured') return 'micro_unsecured';
+
+  const hasCollateralFlag =
+    Number(ticketData.has_collateral) === 1 || Boolean(ticketData.has_collateral);
+  const hasCollateralProof = Boolean(
+    ticketData.collateral_desc ||
+      ticketData.photo_collateral_1 ||
+      ticketData.photo_collateral_2
+  );
+
+  if (hasCollateralFlag || hasCollateralProof) {
     return 'secured_collateral';
   }
+
   const code = (ticketData.currency || 'IDR').toUpperCase();
   const amt = Number(ticketData.requested_amount || 0);
   if (code === 'IDR' && amt <= 500000) return 'micro_unsecured';
@@ -1117,12 +1128,11 @@ export default function LoanApplyPage() {
             </button>
           </form>
 
-          {ticketData?.id && (
-            <div className="p-3 rounded-lg bg-red-950/70 border border-red-700 text-xs text-red-200">
-              {ticketError}
-            </div>
-          )}
-
+            {ticketError && (
+             <div className="p-3 rounded-lg bg-red-950/70 border border-red-700 text-xs text-red-200">
+                {ticketError}
+               </div>
+            )}
           {auctionSuccessMsg && (
             <div className="p-3 rounded-lg bg-emerald-950/80 border border-emerald-500 text-xs text-emerald-200">
               {auctionSuccessMsg}
