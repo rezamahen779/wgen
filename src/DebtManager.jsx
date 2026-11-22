@@ -1594,12 +1594,10 @@ export default function DebtManager({
 
       const targetDebt =
         debts.find(
-          (d) =>
-            d.type === 'receivable' &&
-            String(d.qrApplicationId || '') === String(report.applicationId)
+          (d) => String(d.qrApplicationId || '') === String(report.applicationId)
         ) ||
         debts.find((d) => {
-          if (d.type !== 'receivable' || d.statusKey === 'paid') return false;
+          if (d.statusKey === 'paid') return false;
           const debtPhone = String(d.borrowerPhone || '').replace(/\D/g, '');
           const debtName = String(d.name || '').trim().toLowerCase();
           const phoneMatch =
@@ -1628,21 +1626,22 @@ export default function DebtManager({
           : isNowPaid
           ? 1
           : 0;
-
-        const newPaymentEntry = {
-          id: `qr-pay-${Date.now()}`,
-          date: todayStr,
+const newPaymentEntry = {
+          id: Date.now(),
+          timestamp: `${todayStr} ${new Date().toTimeString().slice(0, 5)}`,
           amount: paidNominal,
-          method: report.transferMethod || 'Transfer QR',
-          note: `Angsuran ke-${instNumber} (${report.borrowerName || targetDebt.name})`,
-          proofPhoto: report.proofImage || report.proofPhoto || report.last_payment_proof || ''
+          methodKey: 'transfer',
+          termIndex: instNumber,
+          isOneTerm: true,
+          lateFeeCharged: 0,
+          daysLate: 0
         };
 
         const updatedHistory = [
-          ...(Array.isArray(targetDebt.paymentHistory) ? targetDebt.paymentHistory : []),
-          newPaymentEntry
+          newPaymentEntry,
+          ...(Array.isArray(targetDebt.paymentHistory) ? targetDebt.paymentHistory : [])
         ];
-
+        
         const updatedDebt = {
           ...targetDebt,
           qrApplicationId: targetDebt.qrApplicationId || String(report.applicationId),
@@ -5083,16 +5082,11 @@ const getDynamicTierTexts = (targetCurr) => {
                   <div key={app.id} className={`p-4 rounded-xl border space-y-2.5 text-xs ${bgInnerBox}`}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-sm">{app.borrower_name}</span>
-                        {app.status === 'counter_offer' && (
-                          <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-semibold">
-                            Menunggu Lelang Jasa
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-sm">{app.borrower_name}</span>
+                        <span className="font-bold text-sm">
+                          {app.borrower_name && String(app.borrower_name).trim().toLowerCase() !== ''
+                            ? app.borrower_name
+                            : 'Peminjam (Tanpa Nama)'}
+                        </span>
                         {app.status === 'counter_offer' && (
                           <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-semibold">
                             Lelang Jasa • Tawaran Terkini: {app.reward_percent || 0}%
@@ -5100,15 +5094,10 @@ const getDynamicTierTexts = (targetCurr) => {
                         )}
                       </div>
                       <span className="font-mono font-bold text-emerald-400 text-sm">
-                        {app.currency} {Number(app.requested_amount).toLocaleString()}
+                        {app.currency} {Number(app.requested_amount || 0).toLocaleString()}
                       </span>
-                    </div>
-                      <span className="font-mono font-bold text-emerald-400 text-sm">
-                        {app.currency} {Number(app.requested_amount).toLocaleString()}
-                      </span>
-                    </div>
-
-                    <div className="text-slate-400 space-y-1">
+                    </div>                   
+                     <div className="text-slate-400 space-y-1">
                       <div>
                         HP: <span className="text-slate-200">{app.borrower_phone}</span> • Tenor:{' '}
                         <span className="text-slate-200">{app.tenor_months} bln</span> (
