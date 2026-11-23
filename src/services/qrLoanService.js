@@ -46,6 +46,8 @@ export async function ensureApplicationExtraColumns() {
     `ALTER TABLE loan_applications ADD COLUMN counter_principal_amount REAL DEFAULT 0`,
     `ALTER TABLE loan_applications ADD COLUMN principal_add_requests INTEGER DEFAULT 0`,
     `ALTER TABLE loan_applications ADD COLUMN photo_collateral_2 TEXT`,
+    `ALTER TABLE loan_applications ADD COLUMN debtor_fingerprint TEXT`,
+    `ALTER TABLE loan_applications ADD COLUMN debtor_signature TEXT`,
     `ALTER TABLE loan_applications ADD COLUMN rejection_reason TEXT`,
     `ALTER TABLE loan_applications ADD COLUMN collateral_feedback TEXT`,
     `ALTER TABLE loan_applications ADD COLUMN paid_amount REAL DEFAULT 0`,
@@ -170,6 +172,7 @@ export async function updateLenderQrSettings(
     });
   }
 }
+
 /**
  * 3. Buat ulang token baru (jika link lama bocor/ingin diganti)
  */
@@ -256,6 +259,9 @@ export async function submitLoanApplication(payload) {
     ''
   ).trim();
 
+  const resolvedDebtorFingerprint = payload.debtorFingerprint || payload.debtor_fingerprint || '';
+  const resolvedDebtorSignature = payload.debtorSignature || payload.debtor_signature || '';
+
   await turso.execute({
     sql: `INSERT INTO loan_applications (
             id, qr_token, lender_uid, borrower_name, debtor_id, debtor_address,
@@ -263,9 +269,10 @@ export async function submitLoanApplication(payload) {
             reward_percent, contract_type, tenor_months, is_installment,
             has_collateral, collateral_desc, collateral_value,
             photo_id, photo_selfie, photo_selfie_id,
+            debtor_fingerprint, debtor_signature,
             photo_collateral_1, photo_collateral_2,
             notes, payment_destination, status, paid_amount, paid_installments, installment_history, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 0, '[]', ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 0, '[]', ?)`,
     args: [
       id,
       qrInfo.token,
@@ -287,6 +294,8 @@ export async function submitLoanApplication(payload) {
       payload.photoId || '',
       payload.photoSelfie || '',
       payload.photoSelfieId || '',
+      resolvedDebtorFingerprint,
+      resolvedDebtorSignature,
       isWithCollateral ? (payload.photoCollateral1 || '') : '',
       isWithCollateral ? (payload.photoCollateral2 || '') : '',
       (payload.notes || '').trim(),
@@ -303,24 +312,34 @@ export async function submitLoanApplication(payload) {
 }
 
 /**
- * Helper internal: lengkapi payment_destination dari lender_qr_links jika kosong
+ * Helper internal: lengkapi payment_destination & alias field tanda tangan/sidik jari
  */
-async function hydratePaymentDestination(row) {
+async function hydrateApplicationRecord(row) {
   if (!row) return null;
-  if (row.payment_destination && String(row.payment_destination).trim()) {
-    return row;
+
+  const enriched = {
+    ...row,
+    debtor_fingerprint: row.debtor_fingerprint || row.debtorFingerprint || '',
+    debtorFingerprint: row.debtor_fingerprint || row.debtorFingerprint || '',
+    debtor_signature: row.debtor_signature || row.debtorSignature || '',
+    debtorSignature: row.debtor_signature || row.debtorSignature || ''
+  };
+
+  if (enriched.payment_destination && String(enriched.payment_destination).trim()) {
+    return enriched;
   }
-  if (!row.qr_token) return row;
+  if (!enriched.qr_token) return enriched;
+
   try {
     await ensureQrLinkExtraColumns();
     const qrRes = await turso.execute({
       sql: `SELECT payment_destination FROM lender_qr_links WHERE token = ? LIMIT 1`,
-      args: [String(row.qr_token).trim().toUpperCase()]
+      args: [String(enriched.qr_token).trim().toUpperCase()]
     });
     const dest = qrRes.rows?.[0]?.payment_destination || '';
-    return { ...row, payment_destination: dest };
+    return { ...enriched, payment_destination: dest };
   } catch {
-    return row;
+    return enriched;
   }
 }
 
@@ -342,7 +361,7 @@ export async function getIncomingApplications(lenderUid, statusFilter = 'pending
           args: [lenderUid, statusFilter]
         });
 
-  return Promise.all(res.rows.map((r) => hydratePaymentDestination(r)));
+  return Promise.all(res.rows.map((r) => hydrateApplicationRecord(r)));
 }
 
 /**
@@ -368,7 +387,7 @@ export async function getLoanApplicationById(applicationId) {
     args: [applicationId.trim()]
   });
   const row = res.rows?.[0] || null;
-  return hydratePaymentDestination(row);
+  return hydrateApplicationRecord(row);
 }
 
 /**
@@ -780,4 +799,4 @@ export async function syncInstallmentStatusFromLoan({
           WHERE id = ?`,
     args: [Number(totalPaidAmount) || 0, Number(paidInstallmentsCount) || 0, nowIso, applicationId]
   });
-}
+} 

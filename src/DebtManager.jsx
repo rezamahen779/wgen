@@ -1711,7 +1711,10 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
     setPhotoSelfieIdDebtor(app.photo_selfie_id || '');
     setPhotoCollateral1(app.photo_collateral_1 || '');
     setPhotoCollateral2(app.photo_collateral_2 || '');
+    setDebtorFingerprint(app.debtor_fingerprint || app.debtorFingerprint || '');
+    setDebtorSignature(app.debtor_signature || app.debtorSignature || '');
     setApprovedApplicationId(app.id);
+
 
     setIsDebtModalOpen(true);
   };

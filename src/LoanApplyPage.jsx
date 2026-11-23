@@ -322,6 +322,8 @@ export default function LoanApplyPage() {
     photoId: '',
     photoSelfie: '',
     photoSelfieId: '',
+    debtorFingerprint: '',
+    debtorSignature: '',
     photoCollateral1: '',
     photoCollateral2: '',
     notes: '',
@@ -630,7 +632,16 @@ export default function LoanApplyPage() {
     }
 
     if (!form.photoId || !form.photoSelfie || !form.photoSelfieId) {
-      setFormError('Ketiga foto verifikasi identitas (KTP, Selfie, dan Selfie + KTP) wajib dilampirkan.');
+      setFormError(
+        'Ketiga foto verifikasi identitas (KTP, Selfie, dan Selfie + KTP + Kertas Cap Sidik Jari & Nama Lengkap) wajib dilampirkan.'
+      );
+      return;
+    }
+
+    if (!form.debtorFingerprint || !form.debtorSignature) {
+      setFormError(
+        'Foto Cap Sidik Jari Debitur dan Foto Tanda Tangan / Nama Lengkap Debitur di kertas kosong wajib dilampirkan.'
+      );
       return;
     }
 
@@ -656,6 +667,8 @@ export default function LoanApplyPage() {
       const res = await submitLoanApplication({
         qrToken: tokenParam,
         ...form,
+        debtor_fingerprint: form.debtorFingerprint,
+        debtor_signature: form.debtorSignature,
         tenorMonths: Math.min(12, Math.max(1, parsedTenorVal)),
         hasCollateral: selectedContract.requiresCollateral,
         rewardPercent: Number(form.rewardPercent) || defaultReward
@@ -966,6 +979,9 @@ export default function LoanApplyPage() {
   const perMonthEstimate = form.isInstallment ? totalPayable / tenorCount : totalPayable;
   const penaltyInfo = getPenaltyTierInfo(form.contractType, numericAmount, form.currency, liveRates);
 
+  const identitySectionNumber = selectedContract.requiresCollateral ? 5 : 4;
+  const signatureSectionNumber = identitySectionNumber + 1;
+
   // =========================================================================
   // TAMPILAN 1: HALAMAN CEK STATUS TIKET, STATUS ANGSURAN & LELANG MULTI-OPSI
   // =========================================================================
@@ -988,7 +1004,6 @@ export default function LoanApplyPage() {
 
     const progress = extractInstallmentProgress(ticketData);
     const creditorDestinationAccount = extractDestinationAccount(ticketData, qrInfo);
-    const isDestinationLocked = creditorDestinationAccount.length > 0;
 
     // Sembunyikan banner biru jika termin yang dilaporkan sudah terverifikasi masuk
     const reportedTermNum = Number(paymentReport.installmentNumber || 1);
@@ -2231,10 +2246,10 @@ export default function LoanApplyPage() {
             </div>
           )}
 
-          {/* BAGIAN 5: 3 FOTO VERIFIKASI IDENTITAS WAJIB */}
+          {/* BAGIAN 5 (ATAU 4): 3 FOTO VERIFIKASI IDENTITAS WAJIB */}
           <div className="space-y-3 pt-4 border-t border-emerald-800/70">
             <div className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-              {selectedContract.requiresCollateral ? '5.' : '4.'} Lampiran Verifikasi Identitas Wajib (Otomatis &lt; 800 KB)
+              {identitySectionNumber}. Lampiran Verifikasi Identitas Wajib (Otomatis &lt; 800 KB)
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
@@ -2265,14 +2280,73 @@ export default function LoanApplyPage() {
               </label>
 
               <label className="p-3.5 rounded-xl bg-[#071510] border border-dashed border-emerald-700 hover:border-emerald-500 cursor-pointer flex flex-col gap-1">
-                <span className="text-emerald-200 font-semibold">3. Foto Selfie + KTP *</span>
-                <span className="text-[11px] text-emerald-400">
+                <span className="text-emerald-200 font-semibold">
+                  3. Foto Selfie + KTP + Kertas (Cap Sidik Jari &amp; Nama Lengkap) *
+                </span>
+                <span className="text-[10px] text-emerald-100/70 leading-snug">
+                  Selfie memegang KTP beserta kertas berisi cap sidik jari &amp; nama lengkap.
+                </span>
+                <span className="text-[11px] text-emerald-400 mt-auto pt-1">
                   {form.photoSelfieId ? '✓ Terlampir' : 'Pilih / ambil foto'}
                 </span>
                 <input
                   type="file"
                   accept="image/*"
                   onChange={(e) => handlePhotoUpload('photoSelfieId', e)}
+                  className="hidden"
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* BAGIAN 6 (ATAU 5): TANDA TANGAN & CAP SIDIK JARI DEBITUR (OTOMATIS MASUK DOKUMEN KONTRAK) */}
+          <div className="space-y-3 pt-4 border-t border-emerald-800/70">
+            <div>
+              <div className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                {signatureSectionNumber}. Tanda Tangan &amp; Cap Sidik Jari Debitur (Wajib — Otomatis Terlampir di Kontrak)
+              </div>
+              <p className="text-[11px] text-emerald-200/80 mt-1">
+                Kedua lampiran di bawah wajib diunggah dan akan otomatis disisipkan pada dokumen perjanjian pinjaman Anda:
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <label className="p-3.5 rounded-xl bg-[#071510] border border-dashed border-emerald-600 hover:border-emerald-400 cursor-pointer flex flex-col gap-1.5">
+                <span className="text-emerald-200 font-semibold">
+                  Debtor Fingerprint (Cap Sidik Jari Debitur) *
+                </span>
+                <span className="text-[11px] text-emerald-100/75 leading-relaxed">
+                  Buat <strong>cap sidik jari</strong> di atas kertas putih kosong, lalu foto dengan jelas dan unggah di sini.
+                </span>
+                <span className="text-[11px] text-emerald-400 font-medium mt-auto pt-1">
+                  {form.debtorFingerprint
+                    ? '✓ Foto Cap Sidik Jari terlampir'
+                    : 'Pilih / ambil foto cap sidik jari'}
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handlePhotoUpload('debtorFingerprint', e)}
+                  className="hidden"
+                />
+              </label>
+
+              <label className="p-3.5 rounded-xl bg-[#071510] border border-dashed border-emerald-600 hover:border-emerald-400 cursor-pointer flex flex-col gap-1.5">
+                <span className="text-emerald-200 font-semibold">
+                  Debtor Signature (Tanda Tangan / Nama Lengkap Debitur) *
+                </span>
+                <span className="text-[11px] text-emerald-100/75 leading-relaxed">
+                  Tulis <strong>tanda tangan &amp; nama lengkap</strong> Anda di atas kertas putih kosong, lalu foto dengan jelas dan unggah di sini.
+                </span>
+                <span className="text-[11px] text-emerald-400 font-medium mt-auto pt-1">
+                  {form.debtorSignature
+                    ? '✓ Foto Tanda Tangan / Nama terlampir'
+                    : 'Pilih / ambil foto tanda tangan'}
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handlePhotoUpload('debtorSignature', e)}
                   className="hidden"
                 />
               </label>

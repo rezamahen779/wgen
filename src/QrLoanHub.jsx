@@ -400,7 +400,16 @@ export default function QrLoanHub({
   const triggerApproveToParent = (app) => {
     setShowInboxModal(false);
     if (onApproveApplication) {
-      onApproveApplication(app, qrLinkData);
+      const fingerprint = app.debtor_fingerprint || app.debtorFingerprint || '';
+      const signature = app.debtor_signature || app.debtorSignature || '';
+      const enrichedApp = {
+        ...app,
+        debtor_fingerprint: fingerprint,
+        debtorFingerprint: fingerprint,
+        debtor_signature: signature,
+        debtorSignature: signature
+      };
+      onApproveApplication(enrichedApp, qrLinkData);
     }
   };
 
@@ -1020,6 +1029,9 @@ export default function QrLoanHub({
                       'negotiating'
                     ].includes(statusLower) || Boolean(app.borrower_counter_amount || app.borrower_reply_note);
 
+                  const debtorFp = app.debtor_fingerprint || app.debtorFingerprint || '';
+                  const debtorSig = app.debtor_signature || app.debtorSignature || '';
+
                   return (
                     <div key={app.id} className={`p-4 rounded-xl border space-y-2.5 text-xs ${bgInnerBox}`}>
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1086,6 +1098,36 @@ export default function QrLoanHub({
                         )}
                         {app.notes && <div className="text-slate-300">Catatan: {app.notes}</div>}
                       </div>
+
+                      {/* Preview Lampiran Sidik Jari & Tanda Tangan Debitur */}
+                      {(debtorFp || debtorSig) && (
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          {debtorFp && (
+                            <div className="p-2 rounded-lg bg-slate-950/60 border border-emerald-800/50 space-y-1">
+                              <span className="block text-[10px] text-emerald-400 font-semibold">
+                                Cap Sidik Jari Debitur:
+                              </span>
+                              <img
+                                src={debtorFp}
+                                alt="Debtor Fingerprint"
+                                className="w-full h-16 object-contain rounded bg-white p-1"
+                              />
+                            </div>
+                          )}
+                          {debtorSig && (
+                            <div className="p-2 rounded-lg bg-slate-950/60 border border-emerald-800/50 space-y-1">
+                              <span className="block text-[10px] text-emerald-400 font-semibold">
+                                Tanda Tangan Debitur:
+                              </span>
+                              <img
+                                src={debtorSig}
+                                alt="Debtor Signature"
+                                className="w-full h-16 object-contain rounded bg-white p-1"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {app.borrower_reply_note && (
                         <div className="p-2 rounded bg-amber-950/50 border border-amber-700/50 text-amber-200 text-[11px]">
