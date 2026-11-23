@@ -10,7 +10,9 @@ import {
   CreditCard,
   ShieldCheck,
   Calculator,
-  ArrowRight
+  ArrowRight,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { App as CapApp } from '@capacitor/app';
 
@@ -244,13 +246,26 @@ export default function App() {
 
   const mainMouseX = useMotionValue(Infinity);
   const subMouseX = useMotionValue(Infinity);
-  
+
   const [activeTab, setActiveTab] = useState('home');
-
-
   const [transactionSubTab, setTransactionSubTab] = useState('none');
   const [slideDirection, setSlideDirection] = useState(0);
   const [showQuickAddModal, setShowQuickAddModal] = useState(false);
+
+  // --- CUSTOM GLOBAL POPUP (PENGGANTI ALERT BAWAAN BROWSER) ---
+  const [customAlert, setCustomAlert] = useState(null);
+
+  useEffect(() => {
+    const originalAlert = window.alert;
+
+    window.alert = (message) => {
+      setCustomAlert(String(message));
+    };
+
+    return () => {
+      window.alert = originalAlert;
+    };
+  }, []);
 
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
@@ -523,6 +538,48 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col font-sans bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-gray-100 pb-28 sm:pb-20 relative transition-colors duration-300 overflow-x-hidden select-none">
       <SplitBillFloatingBubble mainCurrency={mainCurrency} language={language} twoToneTheme={twoToneTheme} />
+
+      {/* GLOBAL CUSTOM ALERT MODAL (BEBAS TULISAN DOMAIN VERCEL) */}
+      <AnimatePresence>
+        {customAlert && (
+          <div className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-5">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 15 }}
+              transition={macSpring}
+              className="w-full max-w-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl p-6 shadow-2xl text-center flex flex-col items-center gap-4"
+            >
+              <div className={`p-3.5 rounded-2xl bg-emerald-500/10 ${currentTheme.icon}`}>
+                {customAlert.toLowerCase().includes('failed') ||
+                customAlert.toLowerCase().includes('gagal') ||
+                customAlert.toLowerCase().includes('error') ? (
+                  <AlertCircle className="w-8 h-8 text-rose-500" />
+                ) : (
+                  <CheckCircle2 className="w-8 h-8" />
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <h3 className="text-sm font-black tracking-wide text-gray-900 dark:text-white">
+                  WGen Note
+                </h3>
+                <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed break-words">
+                  {customAlert}
+                </p>
+              </div>
+
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setCustomAlert(null)}
+                className={`w-full py-3 rounded-2xl bg-gradient-to-r ${currentTheme.btn} text-white font-bold text-xs shadow-lg cursor-pointer mt-1`}
+              >
+                Oke
+              </motion.button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {!isLocked && showQuickAddModal && (
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-xs flex flex-col justify-end touch-none overscroll-none">
