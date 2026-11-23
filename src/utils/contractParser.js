@@ -123,66 +123,18 @@ function fillSmartDots(text, values) {
   });
 }
 
-export function buildAdjustedContractHtml(
-  clausesOrText,
-  debt,
-  dSym,
-  dCurr,
-  principalVal,
-  collateralClauseText,
-  flexibleLabel
-) {
-  const principalNum = Number(principalVal || 0);
-  const totalNum = Number(debt.amount || principalNum);
-  const bonusNum = Math.max(0, totalNum - principalNum);
-  const countNum = Math.max(1, Number(debt.installmentCount || 1));
-  const installmentNum = debt.isInstallment ? Math.ceil(totalNum / countNum) : totalNum;
-
-  const fmtMoney = (n) =>
-    dCurr === 'IDR'
-      ? `${dSym}${Math.round(n).toLocaleString('id-ID')},-`
-      : `${dSym} ${n.toLocaleString()} (${dCurr})`;
-
-  const values = {
-    principal: fmtMoney(principalNum),
-    bonus: fmtMoney(bonusNum),
-    installment: fmtMoney(installmentNum),
-    total: fmtMoney(totalNum),
-    tenor: `${countNum} bulan`,
-    lateFee: `${debt.lateFeePercent || 0}%`,
-    address: debt.debtorAddress || '-',
-    collateral: collateralClauseText || '-'
-  };
-
-  const applyVariables = (str) => {
-    let out = String(str || '')
-      .replace(/\{\{PRINCIPAL\}\}|\{\{POKOK\}\}/gi, values.principal)
-      .replace(/\{\{BONUS\}\}|\{\{UJRAH\}\}/gi, values.bonus)
-      .replace(/\{\{INSTALLMENT\}\}|\{\{CICILAN\}\}/gi, values.installment)
-      .replace(/\{\{TOTAL\}\}/gi, values.total)
-      .replace(/\{\{TENOR\}\}/gi, values.tenor)
-      .replace(/\{\{START_DATE\}\}/gi, debt.startDate || '-')
-      .replace(/\{\{DUE_DATE\}\}/gi, debt.dueDate || flexibleLabel)
-      .replace(/\{\{COLLATERAL\}\}/gi, values.collateral)
-      .replace(/\{\{DEBTOR_ADDRESS\}\}|\[alamat lengkap\]/gi, values.address)
-      .replace(/\{\{DEBTOR_NAME\}\}/gi, debt.name || '-')
-      .replace(/\{\{LENDER_NAME\}\}/gi, debt.lenderName || '-');
-
-    return fillSmartDots(out, values);
-  };
-
-  // Normalisasi input: mendukung Array [{ title, body }] maupun string lama
+export function buildAdjustedContractHtml(clausesOrText) {
   const sections = Array.isArray(clausesOrText)
     ? clausesOrText
         .filter((c) => (c.title && c.title.trim()) || (c.body && c.body.trim()))
         .map((c) => ({
-          title: applyVariables(c.title || '').trim(),
-          items: applyVariables(c.body || '')
+          title: String(c.title || '').trim(),
+          items: String(c.body || '')
             .split('\n')
             .map((l) => l.trim())
             .filter(Boolean)
         }))
-    : splitRawTextToClauses(applyVariables(clausesOrText)).map((c) => ({
+    : splitRawTextToClauses(String(clausesOrText || '')).map((c) => ({
         title: c.title.trim(),
         items: c.body.split('\n').map((l) => l.trim()).filter(Boolean)
       }));

@@ -1698,7 +1698,7 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
 
     return '';
   };
-  
+
   // Fungsi Perhitungan Denda Sesuai Aturan Micro, Tier A & Tier B (Total Maks Sama: 32,5%)
   const computeTieredPenalty = (principal, daysLate, currencyCode = 'IDR', mode = 'auto', manualPct = 0) => {
     if (daysLate <= 0 || principal <= 0) {
@@ -2006,7 +2006,10 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
       `ALTER TABLE debts ADD COLUMN photo_collateral_2 TEXT DEFAULT ''`,
       `ALTER TABLE debts ADD COLUMN photo_etc1 TEXT DEFAULT ''`,
       `ALTER TABLE debts ADD COLUMN photo_etc2 TEXT DEFAULT ''`,
-      `ALTER TABLE debts ADD COLUMN qr_application_id TEXT DEFAULT ''`
+      `ALTER TABLE debts ADD COLUMN qr_application_id TEXT DEFAULT ''`,
+      `ALTER TABLE debts ADD COLUMN custom_clauses TEXT DEFAULT '[]'`,
+      `ALTER TABLE debts ADD COLUMN uploaded_contract_text TEXT DEFAULT ''`,
+      `ALTER TABLE debts ADD COLUMN uploaded_contract_file_name TEXT DEFAULT ''`
     ];
     for (const stmt of alterStatements) {
       try {
@@ -2035,7 +2038,7 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
       const localDebts = localSavedRaw ? JSON.parse(localSavedRaw) : [];
 
       if (res.rows && res.rows.length > 0) {
-        const remoteFormatted = res.rows.map(row => ({
+       const remoteFormatted = res.rows.map(row => ({
           id: String(row.id),
           qrApplicationId: row.qr_application_id || '',
           name: row.name,
@@ -2079,9 +2082,17 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
           paymentMethodKey: row.payment_method_key,
           paymentAccountInfo: row.payment_account_info || '',
           paymentHistory: row.payment_history ? JSON.parse(row.payment_history) : [],
+          customClauses: (() => {
+            try {
+              return row.custom_clauses ? JSON.parse(row.custom_clauses) : [];
+            } catch {
+              return [];
+            }
+          })(),
+          uploadedContractText: row.uploaded_contract_text || '',
+          uploadedContractFileName: row.uploaded_contract_file_name || '',
           updatedAt: row.updated_at || ''
         }));
-
         const remoteMap = new Map(remoteFormatted.map(item => [String(item.id), item]));
         const unsyncedLocalItems = [];
 
@@ -2134,6 +2145,7 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
       photoCollateral1, photoCollateral2, photoEtc1, photoEtc2,
       isInstallment, installmentCount, paidInstallments,
       paymentMethodKey, paymentAccountInfo,
+      customClauses,
       uploadedContractFileName, uploadedContractText
     } = formData;
 
@@ -2292,8 +2304,9 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
       paymentAccountInfo: cleanedAccountInfo,
       paymentHistory: initialHistory,
       updatedAt: nowIso,
-      uploadedContractFileName,
-      uploadedContractText,
+      customClauses: Array.isArray(customClauses) ? customClauses : [],
+      uploadedContractFileName: uploadedContractFileName || '',
+      uploadedContractText: uploadedContractText || '',
     };
 
     let updatedDebts;
@@ -2314,15 +2327,17 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
 
     try {
       await ensureTursoDebtsSchema();
-      await turso.execute({
+     await turso.execute({
         sql: `INSERT INTO debts (
           id, user_id, qr_application_id, name, lender_name, debtor_id_no, creditor_id_no, debtor_address, category, type, principal_amount, bonus_percent, bonus_type, late_fee_mode, late_fee_percent, amount, currency, 
           borrower_phone, emergency_phone, collateral, collateral_desc, start_date, due_date, 
           status_key, image, creditor_fingerprint, creditor_signature, debtor_fingerprint, debtor_signature,
           photo_id_debtor, photo_selfie_debtor, photo_selfie_id_debtor, photo_collateral_1, photo_collateral_2, photo_etc1, photo_etc2,
           is_installment, installment_count, paid_installments, total_paid_amount, 
-          installment_amount, payment_method_key, payment_account_info, payment_history, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          installment_amount, payment_method_key, payment_account_info, payment_history,
+          custom_clauses, uploaded_contract_text, uploaded_contract_file_name,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET 
           qr_application_id=excluded.qr_application_id, name=excluded.name, lender_name=excluded.lender_name, debtor_id_no=excluded.debtor_id_no, creditor_id_no=excluded.creditor_id_no,
           debtor_address=excluded.debtor_address, category=excluded.category, type=excluded.type, principal_amount=excluded.principal_amount, bonus_percent=excluded.bonus_percent,
@@ -2339,7 +2354,10 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
           is_installment=excluded.is_installment, installment_count=excluded.installment_count, 
           paid_installments=excluded.paid_installments, total_paid_amount=excluded.total_paid_amount, 
           installment_amount=excluded.installment_amount, payment_method_key=excluded.payment_method_key, 
-          payment_account_info=excluded.payment_account_info, payment_history=excluded.payment_history, updated_at=excluded.updated_at`,
+          payment_account_info=excluded.payment_account_info, payment_history=excluded.payment_history,
+          custom_clauses=excluded.custom_clauses, uploaded_contract_text=excluded.uploaded_contract_text,
+          uploaded_contract_file_name=excluded.uploaded_contract_file_name,
+          updated_at=excluded.updated_at`,
         args: [
           newDebtId, userId, debtData.qrApplicationId, name, lenderName, debtorIdNo, creditorIdNo, debtorAddress, selectedCategory, type, principal, bonusPct, bonusType, lateFeeMode, latePct, totalAmt, debtCurrency,
           borrowerPhone, emergencyPhone, collateral ? 1 : 0, collateralDesc, startDate, dueDate,
@@ -2347,7 +2365,9 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
           photoIdDebtor || '', photoSelfieDebtor || '', photoSelfieIdDebtor || '', photoCollateral1 || '', photoCollateral2 || '', photoEtc1 || '', photoEtc2 || '',
           isInstallment ? 1 : 0, totalInst, debtData.paidInstallments,
           finalPaidAmount, debtData.installmentAmount, paymentMethodKey, cleanedAccountInfo,
-          JSON.stringify(initialHistory), nowIso, nowIso
+          JSON.stringify(initialHistory),
+          JSON.stringify(debtData.customClauses), debtData.uploadedContractText, debtData.uploadedContractFileName,
+          nowIso, nowIso
         ]
       });
 
@@ -2810,7 +2830,20 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
       </div>
     `;
 
-    const contractBodyHtml = debt.uploadedContractText
+   const hasCustomClauses =
+      Array.isArray(debt.customClauses) && debt.customClauses.length > 0;
+
+    const contractBodyHtml = hasCustomClauses
+      ? buildAdjustedContractHtml(
+          debt.customClauses,
+          debt,
+          dSym,
+          dCurr,
+          principalVal,
+          collateralClauseText,
+          t.flexible
+        )
+      : debt.uploadedContractText
       ? buildAdjustedContractHtml(
           debt.uploadedContractText,
           debt,
@@ -2821,22 +2854,7 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
           t.flexible
         )
       : defaultFiveClausesHtml;
-
-    const historyRows = (debt.paymentHistory || []).map((log, idx) => {
-      const logDetailText = formatHistoryLogSummary(log, dCurr, debt);
-      const hasLateDetail = Number(log.daysLate) > 0 || Number(log.lateFeeCharged) > 0;
-      return `
-      <tr>
-        <td style="width: 34px; color: #334155; vertical-align: top;">#${(debt.paymentHistory.length - idx)}</td>
-        <td style="font-weight: 700; color: #0f172a; padding-right: 14px; line-height: 1.35;">
-          <div>${log.timestamp}</div>
-          ${logDetailText ? `<div style="font-size: 7.3pt; margin-top: 1px; color: ${hasLateDetail ? '#b91c1c' : '#475569'}; font-weight: ${hasLateDetail ? '700' : '600'};">${logDetailText}</div>` : ''}
-        </td>
-        <td style="font-weight: 800; color: #000000 !important; text-align: ${isRtl ? 'left' : 'right'}; white-space: nowrap; vertical-align: top;">${dSym} ${log.amount.toLocaleString()}</td>
-      </tr>
-      `;
-    }).join('');
-
+            
     const penaltyMode = debt.lateFeeMode || (Number(debt.lateFeePercent) > 0 ? 'manual' : 'auto');
     const manualPct = Number(debt.lateFeePercent) || 0;
     const samplePenalty1to28 = computeTieredPenalty(principalVal, 10, dCurr, penaltyMode, manualPct);

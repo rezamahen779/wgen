@@ -1,114 +1,92 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  Plus, Trash2, FileUp, Loader2, Sparkles, ChevronUp, ChevronDown, BookOpen
+  Plus, Trash2, FileUp, Loader2, ChevronUp, ChevronDown,
+  BookOpen, Save, FolderOpen, Check
 } from 'lucide-react';
 import { extractContractTextFromFile, splitRawTextToClauses } from './utils/contractParser';
 
+const STORAGE_KEY = 'wgen_saved_contract_templates_v1';
+
 const builderTranslations = {
   id: {
-    title: 'Pasal-Pasal Perjanjian Kustom (Opsional)',
-    subtitle: 'Tulis atau kopas pasal perjanjian saja (1 sampai 100+ pasal). Judul surat, identitas pihak & tanda tangan dibuat otomatis. Gunakan titik-titik (......) atau tombol variabel untuk pengisian nominal otomatis.',
-    addClause: '+ Tambah Pasal',
-    importFile: 'Import dari File (.docx/.pdf/.txt)',
+    title: 'Pasal & Ayat Perjanjian Manual (Opsional)',
+    subtitle: 'Tulis atau kopas isi pasal dan ayat perjanjian secara manual (1–100+ pasal). Judul surat, identitas para pihak, ringkasan detail pinjaman, dan kolom tanda tangan/sidik jari akan digenerate otomatis oleh sistem.',
+    addClause: 'Tambah Pasal',
+    importFile: 'Import (.docx/.pdf/.txt)',
     importing: 'Memecah pasal...',
-    clauseLabel: 'Pasal',
-    titlePlaceholder: 'Contoh: Pasal 1 – Objek Ijarah',
-    bodyPlaceholder: 'Contoh:\n1. PIHAK PERTAMA menyediakan dana sebesar ...... yang dapat digunakan oleh PIHAK KEDUA.\n2. Atas jasa penyediaan dana tersebut, PIHAK KEDUA berkewajiban membayar ujrah sebesar ......',
-    quickInsert: 'Sisipkan Otomatis:',
-    vars: {
-      principal: 'Pokok',
-      bonus: 'Ujrah/Bonus',
-      installment: 'Cicilan/Bln',
-      total: 'Total Bayar',
-      tenor: 'Tenor',
-      address: 'Alamat Debitur',
-      collateral: 'Jaminan'
-    },
-    emptyHint: 'Belum ada pasal kustom. Sistem akan memakai pasal standar aplikasi, atau klik "+ Tambah Pasal" untuk menulis/kopas pasal sendiri.'
+    titlePlaceholder: 'Judul Pasal (cth: Pasal 1 – Objek Perjanjian)',
+    bodyPlaceholder: 'Tulis atau kopas isi ayat perjanjian secara manual di sini...\nContoh:\n1. PIHAK PERTAMA menyerahkan dana pinjaman kepada PIHAK KEDUA.\n2. PIHAK KEDUA wajib mengembalikan sesuai jadwal yang disepakati.',
+    emptyHint: 'Belum ada pasal manual. Sistem akan memakai pasal standar bawaan aplikasi, atau klik "Tambah Pasal" / muat paket pasal tersimpan.',
+    bundleNamePlaceholder: 'Nama paket kontrak (cth: Kontrak Ijarah Full)',
+    saveAllBtn: 'Simpan Semua Pasal',
+    savedSuccess: 'Semua Pasal Tersimpan!',
+    loadBundlePlaceholder: '-- Muat paket pasal tersimpan --',
+    deleteBundleTitle: 'Hapus paket pasal terpilih',
+    clausesCountUnit: 'pasal'
   },
   jp: {
-    title: 'カスタム契約条項ビルダー（任意）',
-    subtitle: '契約の条項のみを入力または貼り付けてください（1〜100条以上対応）。表題・当事者情報・署名欄は自動生成されます。「......」または変数ボタンで金額等が自動入力されます。',
-    addClause: '+ 条項を追加',
-    importFile: 'ファイルから読込 (.docx/.pdf/.txt)',
-    importing: '条項を分割中...',
-    clauseLabel: '第',
-    titlePlaceholder: '例: 第1条（貸付の目的および金額）',
-    bodyPlaceholder: '例:\n1. 甲は乙に対し、元金 ...... を貸し渡す。\n2. 乙は甲に対し、利息・手数料として ...... を支払う。',
-    quickInsert: '自動挿入:',
-    vars: {
-      principal: '元金',
-      bonus: '利息/報酬',
-      installment: '月額返済',
-      total: '返済総額',
-      tenor: '期間',
-      address: '借主住所',
-      collateral: '担保'
-    },
-    emptyHint: 'カスタム条項は未登録です。標準条項を使用するか、「+ 条項を追加」を押して入力してください。'
+    title: '手動契約条項エディタ（任意）',
+    subtitle: '契約の条項・各項を手動で入力または貼り付けてください（1〜100条以上）。表題、当事者情報、貸付詳細サマリー、署名・指印欄はシステムが自動生成します。',
+    addClause: '条項を追加',
+    importFile: '読込 (.docx/.pdf/.txt)',
+    importing: '分割中...',
+    titlePlaceholder: '条項タイトル (例: 第1条 – 貸付の目的)',
+    bodyPlaceholder: '条項の本文を手動で入力してください...',
+    emptyHint: '手動条項は未登録です。標準条項を使用するか、「条項を追加」または保存済みテンプレートを読み込んでください。',
+    bundleNamePlaceholder: '契約テンプレート名 (例: 標準金銭消費貸借)',
+    saveAllBtn: '全条項を一括保存',
+    savedSuccess: '一括保存完了!',
+    loadBundlePlaceholder: '-- 保存済み契約テンプレートを読込 --',
+    deleteBundleTitle: '選択中のテンプレートを削除',
+    clausesCountUnit: '条'
   },
   en: {
-    title: 'Custom Agreement Clauses Builder (Optional)',
-    subtitle: 'Type or paste agreement clauses only (1 to 100+ clauses). Document title, party details & signatures are generated automatically. Use dots (......) or variable chips to auto-fill amounts.',
-    addClause: '+ Add Clause',
-    importFile: 'Import from File (.docx/.pdf/.txt)',
-    importing: 'Splitting clauses...',
-    clauseLabel: 'Clause',
-    titlePlaceholder: 'e.g., Article 1 – Loan Object',
-    bodyPlaceholder: 'e.g.,\n1. The FIRST PARTY provides funds amounting to ...... to be used by the SECOND PARTY.\n2. The SECOND PARTY agrees to pay a service fee/bonus of ......',
-    quickInsert: 'Auto-Fill Chip:',
-    vars: {
-      principal: 'Principal',
-      bonus: 'Bonus/Interest',
-      installment: 'Monthly',
-      total: 'Total Due',
-      tenor: 'Tenor',
-      address: 'Debtor Address',
-      collateral: 'Collateral'
-    },
-    emptyHint: 'No custom clauses added. Default template will be used, or click "+ Add Clause" to write/paste your own.'
+    title: 'Manual Agreement Clauses (Optional)',
+    subtitle: 'Type or paste agreement clauses and articles manually (1–100+ clauses). Document header, party identities, loan summary details, and signature/fingerprint blocks are generated automatically.',
+    addClause: 'Add Clause',
+    importFile: 'Import (.docx/.pdf/.txt)',
+    importing: 'Splitting...',
+    titlePlaceholder: 'Clause Title (e.g., Article 1 – Loan Object)',
+    bodyPlaceholder: 'Type or paste clause paragraphs manually here...',
+    emptyHint: 'No manual clauses added. Default template will be used, or click "Add Clause" / load a saved preset.',
+    bundleNamePlaceholder: 'Contract preset name (e.g., Full Loan Agreement)',
+    saveAllBtn: 'Save All Clauses',
+    savedSuccess: 'All Clauses Saved!',
+    loadBundlePlaceholder: '-- Load saved contract preset --',
+    deleteBundleTitle: 'Delete selected preset',
+    clausesCountUnit: 'clauses'
   },
   ar: {
-    title: 'منشئ بنود الاتفاقية المخصصة (اختياري)',
-    subtitle: 'اكتب أو الصق بنود الاتفاقية فقط (من 1 إلى 100+ بند). يتم إنشاء العنوان وبيانات الأطراف والتوقيع تلقائياً. استخدم النقاط (......) لتعبئة المبالغ تلقائياً.',
-    addClause: '+ إضافة بند',
-    importFile: 'استيراد من ملف (.docx/.pdf/.txt)',
-    importing: 'جاري تقسيم البنود...',
-    clauseLabel: 'البند',
-    titlePlaceholder: 'مثال: المادة 1 – موضوع العقد',
-    bodyPlaceholder: 'مثال:\n1. يقدم الطرف الأول مبلغاً وقدره ...... ليستخدمه الطرف الثاني.\n2. يلتزم الطرف الثاني بدفع أجر/مكافأة قدرها ......',
-    quickInsert: 'إدراج تلقائي:',
-    vars: {
-      principal: 'أصل المبلغ',
-      bonus: 'الأجر/الفائدة',
-      installment: 'القسط الشهري',
-      total: 'الإجمالي',
-      tenor: 'المدة',
-      address: 'عنوان المدين',
-      collateral: 'الضمان'
-    },
-    emptyHint: 'لا توجد بنود مخصصة. سيتم استخدام القالب الافتراضي، أو اضغط "+ إضافة بند" للكتابة.'
+    title: 'بنود وفقرات الاتفاقية اليدوية (اختياري)',
+    subtitle: 'اكتب أو الصق بنود وفقرات الاتفاقية يدوياً (1–100+ بند). يتم إنشاء عنوان العقد وبيانات الأطراف وملخص تفاصيل القرض وخانات التوقيع تلقائياً.',
+    addClause: 'إضافة بند',
+    importFile: 'استيراد (.docx/.pdf/.txt)',
+    importing: 'جاري التقسيم...',
+    titlePlaceholder: 'عنوان البند (مثال: المادة 1 – موضوع العقد)',
+    bodyPlaceholder: 'اكتب أو الصق فقرات البند يدوياً هنا...',
+    emptyHint: 'لا توجد بنود يدوية. سيتم استخدام القالب الافتراضي، أو اضغط "إضافة بند" أو اختر حزمة محفوظة.',
+    bundleNamePlaceholder: 'اسم حزمة العقد (مثال: عقد تمويل كامل)',
+    saveAllBtn: 'حفظ جميع البنود',
+    savedSuccess: 'تم حفظ جميع البنود!',
+    loadBundlePlaceholder: '-- تحميل حزمة بنود محفوظة --',
+    deleteBundleTitle: 'حذف الحزمة المحددة',
+    clausesCountUnit: 'بند'
   },
   cn: {
-    title: '自定义协议条款编辑器（可选）',
-    subtitle: '仅输入或粘贴协议条款正文（支持1至100+条）。合同标题、双方信息及签名栏将自动生成。使用省略号（......）或快捷变量按钮可自动填充金额。',
-    addClause: '+ 添加条款',
-    importFile: '从文件导入 (.docx/.pdf/.txt)',
-    importing: '正在拆分条款...',
-    clauseLabel: '条款',
-    titlePlaceholder: '例如：第一条 – 借款标的',
-    bodyPlaceholder: '例如：\n1. 甲方向乙方提供资金 ...... 供乙方使用。\n2. 乙方自愿向甲方支付服务费/奖励 ......',
-    quickInsert: '自动填充变量:',
-    vars: {
-      principal: '本金',
-      bonus: '利息/奖励',
-      installment: '每期还款',
-      total: '还款总额',
-      tenor: '期限',
-      address: '借款人地址',
-      collateral: '担保物'
-    },
-    emptyHint: '尚未添加自定义条款。系统将使用默认条款，或点击“+ 添加条款”自行输入/粘贴。'
+    title: '手动协议条款编辑器（可选）',
+    subtitle: '请手动输入或粘贴协议条款内容（1–100+条）。文件标题、双方身份信息、借款明细摘要及签名/指纹栏将由系统自动生成。',
+    addClause: '添加条款',
+    importFile: '导入 (.docx/.pdf/.txt)',
+    importing: '拆分中...',
+    titlePlaceholder: '条款标题（例：第一条 – 借款标的）',
+    bodyPlaceholder: '在此手动输入或粘贴条款段落内容...',
+    emptyHint: '尚未添加手动条款。将使用默认模板，或点击“添加条款”/加载已保存的整套条款。',
+    bundleNamePlaceholder: '合同模板名称（例：完整借款协议）',
+    saveAllBtn: '一键保存全部条款',
+    savedSuccess: '全部条款已保存!',
+    loadBundlePlaceholder: '-- 加载已保存的整套条款 --',
+    deleteBundleTitle: '删除所选模板',
+    clausesCountUnit: '条'
   }
 };
 
@@ -123,7 +101,82 @@ export default function ContractClauseBuilder({
 }) {
   const [isImporting, setIsImporting] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [savedTemplates, setSavedTemplates] = useState([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [bundleName, setBundleName] = useState('');
+  const [justSaved, setJustSaved] = useState(false);
+
   const bt = builderTranslations[language] || builderTranslations.id;
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setSavedTemplates(parsed);
+      }
+    } catch {
+      // Abaikan jika localStorage tidak tersedia
+    }
+  }, []);
+
+  const persistTemplates = (list) => {
+    setSavedTemplates(list);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    } catch {
+      // Abaikan error quota
+    }
+  };
+
+  const handleSaveAllClauses = () => {
+    const validClauses = clauses.filter(
+      (c) => (c.title && c.title.trim()) || (c.body && c.body.trim())
+    );
+    if (validClauses.length === 0) return;
+
+    const cleanName =
+      bundleName.trim() || `Kontrak ${savedTemplates.length + 1} (${validClauses.length} ${bt.clausesCountUnit})`;
+
+    const existingIdx = savedTemplates.findIndex(
+      (tpl) => tpl.name.toLowerCase() === cleanName.toLowerCase()
+    );
+
+    const newItem = {
+      id: existingIdx >= 0 ? savedTemplates[existingIdx].id : String(Date.now()),
+      name: cleanName,
+      clauses: validClauses.map((c) => ({ ...c }))
+    };
+
+    const nextList =
+      existingIdx >= 0
+        ? savedTemplates.map((tpl, i) => (i === existingIdx ? newItem : tpl))
+        : [newItem, ...savedTemplates];
+
+    persistTemplates(nextList);
+    setSelectedTemplateId(newItem.id);
+    setBundleName(cleanName);
+    setJustSaved(true);
+    setTimeout(() => setJustSaved(false), 2000);
+  };
+
+  const handleLoadTemplate = (tplId) => {
+    setSelectedTemplateId(tplId);
+    if (!tplId) return;
+    const found = savedTemplates.find((tpl) => tpl.id === tplId);
+    if (!found) return;
+    onChangeClauses(found.clauses.map((c) => ({ ...c })));
+    setBundleName(found.name);
+    setActiveIndex(0);
+  };
+
+  const handleDeleteTemplate = () => {
+    if (!selectedTemplateId) return;
+    const nextList = savedTemplates.filter((tpl) => tpl.id !== selectedTemplateId);
+    persistTemplates(nextList);
+    setSelectedTemplateId('');
+    setBundleName('');
+  };
 
   const handleAddClause = () => {
     const nextNum = clauses.length + 1;
@@ -168,18 +221,6 @@ export default function ContractClauseBuilder({
     setActiveIndex(target);
   };
 
-  const handleInsertToken = (token) => {
-    if (clauses.length === 0) {
-      onChangeClauses([{ title: 'Pasal 1 – ', body: token }]);
-      setActiveIndex(0);
-      return;
-    }
-    const idx = Math.min(activeIndex, clauses.length - 1);
-    const currentBody = clauses[idx].body || '';
-    const spacer = currentBody && !currentBody.endsWith(' ') && !currentBody.endsWith('\n') ? ' ' : '';
-    handleUpdateClause(idx, 'body', `${currentBody}${spacer}${token}`);
-  };
-
   const handleImportFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -189,6 +230,7 @@ export default function ContractClauseBuilder({
       const parsedClauses = splitRawTextToClauses(raw);
       if (parsedClauses.length > 0) {
         onChangeClauses(parsedClauses);
+        setBundleName(file.name.replace(/\.[^/.]+$/, ''));
         setActiveIndex(0);
       }
     } catch (err) {
@@ -199,24 +241,15 @@ export default function ContractClauseBuilder({
     }
   };
 
-  const variableChips = [
-    { label: bt.vars.principal, token: '{{PRINCIPAL}}' },
-    { label: bt.vars.bonus, token: '{{BONUS}}' },
-    { label: bt.vars.installment, token: '{{INSTALLMENT}}' },
-    { label: bt.vars.total, token: '{{TOTAL}}' },
-    { label: bt.vars.tenor, token: '{{TENOR}}' },
-    { label: bt.vars.address, token: '{{DEBTOR_ADDRESS}}' },
-    { label: bt.vars.collateral, token: '{{COLLATERAL}}' }
-  ];
-
   return (
     <div className={`p-3.5 rounded-xl border ${boxClass}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+      {/* Header & Tombol Aksi Utama */}
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
         <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
           <BookOpen className="w-4 h-4" /> {bt.title}
         </span>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <label className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer border transition ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'}`}>
             {isImporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileUp className="w-3.5 h-3.5 text-sky-400" />}
             <span>{isImporting ? bt.importing : bt.importFile}</span>
@@ -234,7 +267,7 @@ export default function ContractClauseBuilder({
             onClick={handleAddClause}
             className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-[11px] font-bold transition ${buttonClass}`}
           >
-            <Plus className="w-3.5 h-3.5" /> {bt.addClause.replace(/^\+\s*/, '')}
+            <Plus className="w-3.5 h-3.5" /> {bt.addClause}
           </button>
         </div>
       </div>
@@ -243,29 +276,76 @@ export default function ContractClauseBuilder({
         {bt.subtitle}
       </p>
 
-      {/* Baris Tombol Sisip Variabel Cepat */}
-      <div className="flex flex-wrap items-center gap-1 mb-3">
-        <span className="text-[10px] font-semibold text-slate-400 flex items-center gap-1 mr-1">
-          <Sparkles className="w-3 h-3 text-amber-400" /> {bt.quickInsert}
-        </span>
-        {variableChips.map((chip) => (
-          <button
-            key={chip.token}
-            type="button"
-            onClick={() => handleInsertToken(chip.token)}
-            className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition ${isDarkMode ? 'bg-slate-800/90 hover:bg-slate-700 border-slate-700 text-emerald-300' : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-emerald-700'}`}
-          >
-            + {chip.label}
-          </button>
-        ))}
-      </div>
+      {/* Bar Simpan & Muat Keseluruhan Paket Pasal Sekaligus */}
+      {(savedTemplates.length > 0 || clauses.length > 0) && (
+        <div className={`p-2 rounded-lg border mb-3 space-y-2 ${isDarkMode ? 'bg-slate-900/70 border-slate-800' : 'bg-slate-100 border-slate-200'}`}>
+          {savedTemplates.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <FolderOpen className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <select
+                value={selectedTemplateId}
+                onChange={(e) => handleLoadTemplate(e.target.value)}
+                className={`flex-1 rounded-lg px-2 py-1 text-[11px] border ${inputBg}`}
+              >
+                <option value="">{bt.loadBundlePlaceholder}</option>
+                {savedTemplates.map((tpl) => (
+                  <option key={tpl.id} value={tpl.id}>
+                    {tpl.name} ({tpl.clauses.length} {bt.clausesCountUnit})
+                  </option>
+                ))}
+              </select>
+              {selectedTemplateId && (
+                <button
+                  type="button"
+                  onClick={handleDeleteTemplate}
+                  title={bt.deleteBundleTitle}
+                  className="p-1 text-rose-400 hover:text-rose-300"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
 
+          {clauses.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <input
+                type="text"
+                value={bundleName}
+                onChange={(e) => setBundleName(e.target.value)}
+                placeholder={bt.bundleNamePlaceholder}
+                className={`flex-1 min-w-[160px] rounded-lg px-2.5 py-1 text-[11px] border ${inputBg}`}
+              />
+              <button
+                type="button"
+                onClick={handleSaveAllClauses}
+                className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-[11px] font-bold border transition ${
+                  justSaved
+                    ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300'
+                    : isDarkMode
+                    ? 'bg-emerald-950/60 hover:bg-emerald-900/70 border-emerald-700 text-emerald-300'
+                    : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-700'
+                }`}
+              >
+                {justSaved ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+                <span>
+                  {justSaved
+                    ? bt.savedSuccess
+                    : `${bt.saveAllBtn} (${clauses.length})`}
+                </span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Daftar Kartu Pasal */}
       {clauses.length === 0 ? (
         <div className={`p-3 rounded-xl border border-dashed text-[11px] text-slate-400 text-center ${isDarkMode ? 'border-slate-700 bg-slate-900/40' : 'border-slate-300 bg-slate-50'}`}>
           {bt.emptyHint}
         </div>
       ) : (
-        <div className="space-y-3 max-h-[340px] overflow-y-auto pr-1">
+        <div className="space-y-3 max-h-[560px] overflow-y-auto pr-1">
           {clauses.map((clause, idx) => (
             <div
               key={idx}
@@ -316,15 +396,15 @@ export default function ContractClauseBuilder({
                 value={clause.title}
                 onChange={(e) => handleUpdateClause(idx, 'title', e.target.value)}
                 placeholder={bt.titlePlaceholder}
-                className={`w-full rounded-lg px-2.5 py-1.5 text-xs font-bold border mb-2 ${inputBg}`}
+                className={`w-full rounded-lg px-3 py-2 text-xs font-bold border mb-2 ${inputBg}`}
               />
 
               <textarea
-                rows={4}
+                rows={7}
                 value={clause.body}
                 onChange={(e) => handleUpdateClause(idx, 'body', e.target.value)}
                 placeholder={bt.bodyPlaceholder}
-                className={`w-full rounded-lg px-2.5 py-2 text-xs border leading-relaxed ${inputBg}`}
+                className={`w-full min-h-[160px] resize-y rounded-lg px-3 py-2.5 text-xs border leading-relaxed ${inputBg}`}
               />
             </div>
           ))}

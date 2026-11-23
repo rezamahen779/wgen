@@ -18,7 +18,7 @@ export default defineConfig({
   base: '', // Tetap dipertahankan sesuai settingan aman kamu
   build: {
     // Menaikkan batas limit warning dari 1000 kB ke 2000 kB (opsional agar terminal bersih)
-    chunkSizeWarningLimit: 2000, 
+    chunkSizeWarningLimit: 3100, 
     
     // ==========================================
     // LANGKAH 3: PENGATURAN MANUAL CHUNKS (Rollup)
