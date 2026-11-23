@@ -219,6 +219,84 @@ function extractDestinationAccount(ticketData, qrInfo) {
   return '';
 }
 
+// Ekstrak konfigurasi Hotline dari qrInfo / ticketData / localStorage
+function resolveHotlineData(qrInfo, ticketData) {
+  let localHotline = null;
+  try {
+    localHotline = JSON.parse(localStorage.getItem('wgen_qr_hotline_config') || 'null');
+  } catch {
+    localHotline = null;
+  }
+
+  let nestedSettings = {};
+  const rawMeta = qrInfo?.hotline_config || qrInfo?.settings || ticketData?.hotline_config;
+  if (rawMeta && typeof rawMeta === 'object') {
+    nestedSettings = rawMeta;
+  } else if (typeof rawMeta === 'string' && rawMeta.trim().startsWith('{')) {
+    try {
+      nestedSettings = JSON.parse(rawMeta);
+    } catch {
+      nestedSettings = {};
+    }
+  }
+
+  const isGlobalFeatureOff = localStorage.getItem('wgen_qr_feature_enabled') === 'false';
+
+  const serverEnabledFlag =
+    qrInfo?.hotline_enabled !== undefined
+      ? Number(qrInfo.hotline_enabled) === 1 || Boolean(qrInfo.hotline_enabled)
+      : ticketData?.hotline_enabled !== undefined
+      ? Number(ticketData.hotline_enabled) === 1 || Boolean(ticketData.hotline_enabled)
+      : nestedSettings.enabled !== undefined
+      ? Boolean(nestedSettings.enabled)
+      : undefined;
+
+  const phone = String(
+    qrInfo?.hotline_phone ||
+      ticketData?.hotline_phone ||
+      nestedSettings.phone ||
+      localHotline?.phone ||
+      ''
+  ).trim();
+
+  const label = String(
+    qrInfo?.hotline_label ||
+      ticketData?.hotline_label ||
+      nestedSettings.label ||
+      localHotline?.label ||
+      'Hotline Bantuan & Konfirmasi'
+  ).trim();
+
+  const hours = String(
+    qrInfo?.hotline_hours ||
+      ticketData?.hotline_hours ||
+      nestedSettings.hours ||
+      localHotline?.hours ||
+      ''
+  ).trim();
+
+  const note = String(
+    qrInfo?.hotline_note ||
+      ticketData?.hotline_note ||
+      nestedSettings.note ||
+      localHotline?.note ||
+      ''
+  ).trim();
+
+  const enabled =
+    serverEnabledFlag !== undefined
+      ? serverEnabledFlag
+      : !isGlobalFeatureOff && (localHotline?.enabled ?? true);
+
+  return {
+    visible: Boolean(enabled && phone),
+    phone,
+    label,
+    hours,
+    note
+  };
+}
+
 // Ekstrak nominal pokok lelang dari kreditur (kolom counter_principal_amount atau tag [LELANG POKOK: ...])
 function extractOfferedPrincipal(ticketData) {
   if (!ticketData) return 0;
@@ -266,6 +344,10 @@ export default function LoanApplyPage() {
   const [ticketData, setTicketData] = useState(null);
   const [loadingTicket, setLoadingTicket] = useState(false);
   const [ticketError, setTicketError] = useState('');
+
+  // State Modal Hotline (Muncul saat tombol Hotline diklik)
+  const [showHotlineModal, setShowHotlineModal] = useState(false);
+  const [copiedHotline, setCopiedHotline] = useState(false);
 
   // State konfirmasi transfer cicilan oleh peminjam (tersimpan langsung ke Turso)
   const [showPaymentReportForm, setShowPaymentReportForm] = useState(false);
@@ -982,6 +1064,112 @@ export default function LoanApplyPage() {
   const identitySectionNumber = selectedContract.requiresCollateral ? 5 : 4;
   const signatureSectionNumber = identitySectionNumber + 1;
 
+  // Resolusi informasi Hotline (hanya muncul berupa tombol, bukan card langsung di halaman)
+  const hotlineInfo = resolveHotlineData(qrInfo, ticketData);
+  const hotlineWaDigits = hotlineInfo.phone.replace(/\D/g, '').replace(/^0/, '62');
+
+  const renderHotlineTriggerButton = () => {
+    if (!hotlineInfo.visible) return null;
+    return (
+      <button
+        type="button"
+        onClick={() => setShowHotlineModal(true)}
+        className="shrink-0 text-[11px] px-2.5 py-1 rounded bg-teal-900/60 hover:bg-teal-800/70 border border-teal-500/60 text-teal-200 font-semibold inline-flex items-center gap-1.5 transition-colors"
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+        <span>Hotline</span>
+      </button>
+    );
+  };
+
+  const renderHotlineModal = () => {
+    if (!showHotlineModal || !hotlineInfo.visible) return null;
+    return (
+      <div
+        className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+        onClick={() => setShowHotlineModal(false)}
+      >
+        <div
+          className="max-w-md w-full bg-[#0c2119] border border-teal-500/70 rounded-2xl p-5 space-y-4 text-emerald-50 shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-2 border-b border-emerald-800/70 pb-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-teal-300 font-bold">
+                Layanan Bantuan & Konfirmasi
+              </div>
+              <h3 className="text-base font-bold text-white mt-0.5">{hotlineInfo.label}</h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowHotlineModal(false)}
+              className="px-2.5 py-1 rounded-lg bg-[#071510] border border-emerald-800 text-xs text-emerald-300 hover:text-white"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="space-y-3 text-xs">
+            <div className="p-3 rounded-xl bg-[#071510] border border-emerald-800/80 flex items-center justify-between gap-2">
+              <div>
+                <span className="text-[10px] text-emerald-400 block">Nomor Hotline / WhatsApp:</span>
+                <span className="font-mono font-bold text-sm text-white select-all">
+                  {hotlineInfo.phone}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(hotlineInfo.phone);
+                  setCopiedHotline(true);
+                  setTimeout(() => setCopiedHotline(false), 2000);
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-emerald-800/70 hover:bg-emerald-700 text-emerald-100 text-[11px] font-semibold"
+              >
+                {copiedHotline ? '✓ Tersalin' : 'Salin Nomor'}
+              </button>
+            </div>
+
+            {hotlineInfo.hours && (
+              <div className="p-2.5 rounded-xl bg-[#071510] border border-emerald-800/70">
+                <span className="text-[10px] text-emerald-400 block">Jam Layanan:</span>
+                <span className="text-emerald-100 font-medium">{hotlineInfo.hours}</span>
+              </div>
+            )}
+
+            {hotlineInfo.note && (
+              <div className="p-3 rounded-xl bg-teal-950/40 border border-teal-800/60 text-emerald-100/90 leading-relaxed whitespace-pre-line">
+                {hotlineInfo.note}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-emerald-800/70">
+            <a
+              href={`https://wa.me/${hotlineWaDigits}?text=${encodeURIComponent(
+                `Halo, saya ingin bertanya terkait pengajuan pinjaman${
+                  ticketData?.id ? ` (Tiket: ${ticketData.id})` : ''
+                }.`
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs text-center"
+            >
+              Hubungi via WhatsApp
+            </a>
+            <button
+              type="button"
+              onClick={() => setShowHotlineModal(false)}
+              className="py-2.5 px-4 rounded-xl bg-[#071510] border border-emerald-800 hover:bg-emerald-950 text-emerald-200 font-semibold text-xs"
+            >
+              Tutup
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // =========================================================================
   // TAMPILAN 1: HALAMAN CEK STATUS TIKET, STATUS ANGSURAN & LELANG MULTI-OPSI
   // =========================================================================
@@ -1030,23 +1218,27 @@ export default function LoanApplyPage() {
 
     return (
       <div className="min-h-screen bg-[#071510] text-emerald-50 py-6 px-3 sm:px-4">
+        {renderHotlineModal()}
         <div className="max-w-lg mx-auto bg-[#0c2119] border border-emerald-800/80 rounded-2xl p-4 sm:p-6 space-y-5">
-          <div className="border-b border-emerald-800/70 pb-3 flex items-center justify-between gap-2">
+          <div className="border-b border-emerald-800/70 pb-3 flex items-start justify-between gap-2">
             <div>
               <h1 className="text-lg font-bold text-white">Cek Status Pengajuan & Angsuran</h1>
               <p className="text-xs text-emerald-200/75 mt-1">
                 Pantau status persetujuan (ACC), progres verifikasi cicilan, atau lakukan penawaran lelang / upgrade jaminan.
               </p>
             </div>
-            {tokenParam && (
-              <button
-                type="button"
-                onClick={() => setTrackingMode(false)}
-                className="shrink-0 text-[11px] px-2.5 py-1 rounded bg-[#071510] border border-emerald-700 text-emerald-300"
-              >
-                Kembali ke Form
-              </button>
-            )}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {renderHotlineTriggerButton()}
+              {tokenParam && (
+                <button
+                  type="button"
+                  onClick={() => setTrackingMode(false)}
+                  className="shrink-0 text-[11px] px-2.5 py-1 rounded bg-[#071510] border border-emerald-700 text-emerald-300"
+                >
+                  Kembali ke Form
+                </button>
+              )}
+            </div>
           </div>
 
           <form
@@ -1266,7 +1458,7 @@ export default function LoanApplyPage() {
                           {showPaymentReportForm ? 'Tutup Form Lapor' : 'Lapor Sudah Transfer Cicilan'}
                         </button>
                         <a
-                          href={`https://wa.me/?text=${encodeURIComponent(
+                          href={`https://wa.me/${hotlineWaDigits}?text=${encodeURIComponent(
                             `Halo, saya ${ticketData.borrower_name} (Tiket: ${ticketData.id}). Saya sudah transfer pembayaran ${
                               progress.isInstallment
                                 ? `angsuran ke-${Math.min(
@@ -1381,12 +1573,12 @@ export default function LoanApplyPage() {
                 </div>
               )}
 
-              {dropProofSuccessMsg && (
-                <div className="p-3 rounded-lg bg-sky-950/80 border border-sky-500 text-xs text-sky-200 leading-relaxed">
-                  {dropProofSuccessMsg}
-                </div>
-              )}
-
+              {dropProofSuccessMsg &&
+                !String(ticketData?.collateral_feedback || '').includes('[✓ BARANG JAMINAN DITERIMA]') && (
+                  <div className="p-3.5 rounded-xl bg-sky-950/60 border border-sky-700/70 text-xs text-sky-200">
+                    {dropProofSuccessMsg}
+                  </div>
+                )}
               {ticketData.collateral_feedback && (
                 <div className="p-3.5 rounded-xl bg-[#0c2119] border border-sky-600/70 space-y-2.5">
                   <div className="font-semibold text-sky-300">
@@ -1407,7 +1599,7 @@ export default function LoanApplyPage() {
                       </button>
 
                       <a
-                        href={`https://wa.me/?text=${encodeURIComponent(
+                        href={`https://wa.me/${hotlineWaDigits}?text=${encodeURIComponent(
                           `Halo, saya ${ticketData.borrower_name} (Tiket: ${ticketData.id}). Barang jaminan (${ticketData.collateral_desc}) sudah saya antar/kirim ke alamat drop-off sesuai instruksi. Mohon dicek ya.`
                         )}`}
                         target="_blank"
@@ -1601,7 +1793,7 @@ export default function LoanApplyPage() {
                               : 'bg-[#071510] border-emerald-800 text-emerald-200/80'
                           }`}
                         >
-                          1. Lelang Imbalan Jasa (%) — Maks {maxAuctionReward}%
+1. Lelang Imbalan Jasa (%) — Maks {maxAuctionReward}%
                         </button>
 
                         {canUpgradeToContract3 && (
@@ -1769,7 +1961,9 @@ export default function LoanApplyPage() {
     const statusUrl = `${window.location.origin}/apply?ticket=${submittedResult.id}`;
     return (
       <div className="min-h-screen bg-[#071510] text-emerald-100 flex items-center justify-center p-4">
+        {renderHotlineModal()}
         <div className="max-w-md w-full bg-[#0c2119] border border-emerald-700 rounded-2xl p-6 text-center space-y-4">
+          <div className="flex justify-end">{renderHotlineTriggerButton()}</div>
           <div className="w-12 h-12 rounded-full bg-emerald-600/20 border border-emerald-500 text-emerald-400 flex items-center justify-center mx-auto text-xl font-bold">
             ✓
           </div>
@@ -1829,12 +2023,14 @@ export default function LoanApplyPage() {
   // =========================================================================
   return (
     <div className="min-h-screen bg-[#071510] text-emerald-50 py-6 px-4">
+      {renderHotlineModal()}
       <div className="max-w-2xl mx-auto bg-[#0c2119] border border-emerald-800/80 rounded-2xl p-5 sm:p-7 space-y-6">
         <div className="border-b border-emerald-800/70 pb-4 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h1 className="text-lg sm:text-xl font-bold text-white">Formulir Pengajuan Pinjaman</h1>
           </div>
           <div className="flex items-center gap-2">
+            {renderHotlineTriggerButton()}
             <button
               type="button"
               onClick={() => setTrackingMode(true)}
@@ -1858,7 +2054,7 @@ export default function LoanApplyPage() {
           {/* BAGIAN 1: IDENTITAS WAJIB PEMINJAM */}
           <div className="space-y-3">
             <div className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-              1. Data Identitas Peminjam (Wajib Diisi Semua)
+1. Data Identitas Peminjam (Wajib Diisi Semua)
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1928,7 +2124,7 @@ export default function LoanApplyPage() {
           <div className="space-y-3 pt-4 border-t border-emerald-800/70">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                2. Pilih Jenis Kontrak & Baca Seluruh Pasal (Wajib)
+2. Pilih Jenis Kontrak & Baca Seluruh Pasal (Wajib)
               </span>
               <div className="flex items-center gap-1.5">
                 <span className="text-[11px] text-emerald-300">Mata Uang Kontrak:</span>
@@ -2058,7 +2254,7 @@ export default function LoanApplyPage() {
           <div className="space-y-3 pt-4 border-t border-emerald-800/70">
             <div className="flex flex-wrap items-center justify-between gap-1">
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                3. Rincian Pinjaman & Penawaran Imbalan Jasa
+3. Rincian Pinjaman & Penawaran Imbalan Jasa
               </span>
               <span className="text-[11px] font-mono text-amber-300">
                 Batas {selectedContract.badge}: {formatMoney(contractLimits.min)} – {formatMoney(contractLimits.max)}
@@ -2183,12 +2379,12 @@ export default function LoanApplyPage() {
                 </div>
                 <div className="text-emerald-100/80">• Grace Period: 1 hari kalender setelah jatuh tempo (denda mulai H+2).</div>
                 <div className="text-emerald-100/80">
-                  - Periode Awal: {penaltyInfo.firstPeriod}{' '}
+- Periode Awal: {penaltyInfo.firstPeriod}{' '}
                   {numericAmount > 0 && <strong className="text-amber-200">({formatMoney(penaltyInfo.estFirstPenalty)})</strong>}
                 </div>
                 <div className="text-emerald-100/80">• Periode Lanjutan: {penaltyInfo.nextPeriod}</div>
                 <div className="text-emerald-100/80">
-                  - Batas Maksimal Denda: {penaltyInfo.maxCap}{' '}
+- Batas Maksimal Denda: {penaltyInfo.maxCap}{' '}
                   {numericAmount > 0 && <strong className="text-amber-200">(Maks {formatMoney(penaltyInfo.estMaxPenalty)})</strong>}
                 </div>
               </div>
@@ -2199,7 +2395,7 @@ export default function LoanApplyPage() {
           {selectedContract.requiresCollateral && (
             <div className="space-y-3 pt-4 border-t border-emerald-800/70">
               <div className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                4. Detail & Foto Barang Jaminan (Wajib untuk Kontrak 3)
+4. Detail & Foto Barang Jaminan (Wajib untuk Kontrak 3)
               </div>
 
               <div>
@@ -2281,7 +2477,7 @@ export default function LoanApplyPage() {
 
               <label className="p-3.5 rounded-xl bg-[#071510] border border-dashed border-emerald-700 hover:border-emerald-500 cursor-pointer flex flex-col gap-1">
                 <span className="text-emerald-200 font-semibold">
-                  3. Foto Selfie + KTP + Kertas (Cap Sidik Jari &amp; Nama Lengkap) *
+3. Foto Selfie + KTP + Kertas (Cap Sidik Jari &amp; Nama Lengkap) *
                 </span>
                 <span className="text-[10px] text-emerald-100/70 leading-snug">
                   Selfie memegang KTP beserta kertas berisi cap sidik jari &amp; nama lengkap.

@@ -13,9 +13,7 @@ function generateAppId() {
   return `APP-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 }
 
-/**
- * 0a. Migrasi aman: Pastikan kolom tambahan tersedia di tabel lender_qr_links
- */
+// 0a. Migrasi aman: Pastikan kolom tambahan tersedia di tabel lender_qr_links
 let qrColumnsEnsured = false;
 export async function ensureQrLinkExtraColumns() {
   if (qrColumnsEnsured) return;
@@ -32,9 +30,7 @@ export async function ensureQrLinkExtraColumns() {
   qrColumnsEnsured = true;
 }
 
-/**
- * 0b. Migrasi aman: Pastikan seluruh kolom tambahan tersedia di tabel loan_applications
- */
+// 0b. Migrasi aman: Pastikan seluruh kolom tambahan tersedia di tabel loan_applications
 let columnsEnsured = false;
 export async function ensureApplicationExtraColumns() {
   if (columnsEnsured) return;
@@ -66,9 +62,29 @@ export async function ensureApplicationExtraColumns() {
   columnsEnsured = true;
 }
 
-/**
- * 1. Ambil QR Link aktif milik user, atau buat baru jika belum ada
- */
+// 0c. Migrasi aman: Pastikan tabel khusus bukti drop jaminan tersedia di Turso
+let dropTableEnsured = false;
+export async function ensureCollateralDropTable() {
+  if (dropTableEnsured) return;
+  await turso.execute(`
+    CREATE TABLE IF NOT EXISTS collateral_drop_proofs (
+      id TEXT PRIMARY KEY,
+      application_id TEXT NOT NULL,
+      lender_uid TEXT NOT NULL,
+      borrower_name TEXT,
+      borrower_phone TEXT,
+      collateral_desc TEXT,
+      drop_note TEXT,
+      proof_image TEXT,
+      status TEXT DEFAULT 'pending',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      verified_at TEXT
+    )
+  `);
+  dropTableEnsured = true;
+}
+
+// 1. Ambil QR Link aktif milik user, atau buat baru jika belum ada
 export async function getOrCreateLenderQrLink({
   lenderUid,
   lenderName = '',
@@ -117,9 +133,7 @@ export async function getOrCreateLenderQrLink({
   return created.rows[0];
 }
 
-/**
- * 2. Update pengaturan QR Link (nama default, mata uang, mode mikro, rekening tujuan, status aktif)
- */
+// 2. Update pengaturan QR Link (nama default, mata uang, mode mikro, rekening tujuan, status aktif)
 export async function updateLenderQrSettings(
   token,
   {
@@ -173,9 +187,7 @@ export async function updateLenderQrSettings(
   }
 }
 
-/**
- * 3. Buat ulang token baru (jika link lama bocor/ingin diganti)
- */
+// 3. Buat ulang token baru (jika link lama bocor/ingin diganti)
 export async function regenerateLenderQrLink({
   lenderUid,
   lenderName = '',
@@ -213,9 +225,7 @@ export async function regenerateLenderQrLink({
   return created.rows[0];
 }
 
-/**
- * 4. Validasi token saat calon peminjam membuka link /apply?token=...
- */
+// 4. Validasi token saat calon peminjam membuka link /apply?token=...
 export async function getQrLinkByToken(token) {
   if (!token) return null;
   await ensureQrLinkExtraColumns();
@@ -229,9 +239,7 @@ export async function getQrLinkByToken(token) {
   return res.rows[0];
 }
 
-/**
- * 5. Kirim pengajuan pinjaman lengkap dari form publik ke akun lender terkait
- */
+// 5. Kirim pengajuan pinjaman lengkap dari form publik ke akun lender terkait
 export async function submitLoanApplication(payload) {
   await ensureApplicationExtraColumns();
 
@@ -311,9 +319,7 @@ export async function submitLoanApplication(payload) {
   };
 }
 
-/**
- * Helper internal: lengkapi payment_destination & alias field tanda tangan/sidik jari
- */
+// Helper internal: lengkapi payment_destination & alias field tanda tangan/sidik jari
 async function hydrateApplicationRecord(row) {
   if (!row) return null;
 
@@ -343,9 +349,7 @@ async function hydrateApplicationRecord(row) {
   }
 }
 
-/**
- * 6. Ambil daftar pengajuan masuk untuk akun lender yang sedang login
- */
+// 6. Ambil daftar pengajuan masuk untuk akun lender yang sedang login
 export async function getIncomingApplications(lenderUid, statusFilter = 'pending') {
   if (!lenderUid) return [];
   await ensureApplicationExtraColumns();
@@ -364,9 +368,7 @@ export async function getIncomingApplications(lenderUid, statusFilter = 'pending
   return Promise.all(res.rows.map((r) => hydrateApplicationRecord(r)));
 }
 
-/**
- * 7. Ubah status pengajuan sederhana ('approved' atau 'rejected')
- */
+// 7. Ubah status pengajuan sederhana ('approved' atau 'rejected')
 export async function updateApplicationStatus(applicationId, status) {
   await ensureApplicationExtraColumns();
   const nowIso = new Date().toISOString();
@@ -376,9 +378,7 @@ export async function updateApplicationStatus(applicationId, status) {
   });
 }
 
-/**
- * 8. Ambil status pengajuan berdasarkan ID Tiket (untuk halaman publik ?ticket=...)
- */
+// 8. Ambil status pengajuan berdasarkan ID Tiket (untuk halaman publik ?ticket=...)
 export async function getLoanApplicationById(applicationId) {
   if (!applicationId) return null;
   await ensureApplicationExtraColumns();
@@ -390,9 +390,7 @@ export async function getLoanApplicationById(applicationId) {
   return hydrateApplicationRecord(row);
 }
 
-/**
- * 9. Sistem Lelang, Persetujuan Tenor & Upgrade Multi-Opsi
- */
+// 9. Sistem Lelang, Persetujuan Tenor & Upgrade Multi-Opsi
 export async function resubmitLoanCounterOffer(
   applicationId,
   newRewardPercent,
@@ -569,16 +567,16 @@ export async function resubmitLoanCounterOffer(
 
   if (auctionType === 'collateral_drop_proof') {
     const dropNote = (extraPayload.collateralDropProofNote || '').trim();
-    const prevFeedback = existing.collateral_feedback ? `${existing.collateral_feedback}\n` : '';
-    const nextFeedback = `${prevFeedback}[BUKTI DROP DIKIRIM DEBITUR${dropNote ? `: ${dropNote}` : ''}]`;
+    const dropPhoto = extraPayload.collateralDropProofPhoto || '';
 
-    await turso.execute({
-      sql: `UPDATE loan_applications
-            SET collateral_feedback = ?,
-                photo_collateral_2 = COALESCE(NULLIF(?, ''), photo_collateral_2),
-                updated_at = ?
-            WHERE id = ?`,
-      args: [nextFeedback, extraPayload.collateralDropProofPhoto || '', nowIso, applicationId]
+    await submitCollateralDropProof({
+      applicationId,
+      lenderUid: existing.lender_uid,
+      borrowerName: existing.borrower_name,
+      borrowerPhone: existing.borrower_phone,
+      collateralDesc: existing.collateral_desc,
+      dropNote,
+      proofImage: dropPhoto
     });
     return;
   }
@@ -595,9 +593,7 @@ export async function resubmitLoanCounterOffer(
   });
 }
 
-/**
- * 10. Kreditur memberi feedback jaminan, lelang pokok, tenor final, atau menolak dengan alasan lelang imbalan jasa
- */
+// 10. Kreditur memberi feedback jaminan, lelang pokok, tenor final, atau menolak dengan alasan lelang imbalan jasa
 export async function updateApplicationFeedback({
   applicationId,
   status,
@@ -639,9 +635,7 @@ export async function updateApplicationFeedback({
   });
 }
 
-/**
- * 11. Peminjam melapor sudah transfer cicilan di halaman tiket (tersimpan ke Turso)
- */
+// 11. Peminjam melapor sudah transfer cicilan di halaman tiket (tersimpan ke Turso)
 export async function submitInstallmentPaymentReport(
   applicationId,
   { installmentNumber, amount, transferMethod, notes = '', proofImage = '' }
@@ -692,9 +686,7 @@ export async function submitInstallmentPaymentReport(
   return updatedHistory;
 }
 
-/**
- * 12. Kreditur mengonfirmasi cicilan masuk (menambah paid_amount & paid_installments di Turso)
- */
+// 12. Kreditur mengonfirmasi cicilan masuk (menambah paid_amount & paid_installments di Turso)
 export async function recordVerifiedInstallmentPayment({
   applicationId,
   amountReceived,
@@ -780,9 +772,7 @@ export async function recordVerifiedInstallmentPayment({
   };
 }
 
-/**
- * 13. Sinkronisasi langsung total terbayar dari catatan hutang-piutang aplikasi utama ke tiket
- */
+// 13. Sinkronisasi langsung total terbayar dari catatan hutang-piutang aplikasi utama ke tiket
 export async function syncInstallmentStatusFromLoan({
   applicationId,
   totalPaidAmount,
@@ -799,4 +789,98 @@ export async function syncInstallmentStatusFromLoan({
           WHERE id = ?`,
     args: [Number(totalPaidAmount) || 0, Number(paidInstallmentsCount) || 0, nowIso, applicationId]
   });
-} 
+}
+
+// 14. Simpan bukti pengiriman / drop jaminan dari debitur ke tabel khusus collateral_drop_proofs
+export async function submitCollateralDropProof({
+  applicationId,
+  lenderUid,
+  borrowerName,
+  borrowerPhone,
+  collateralDesc,
+  dropNote,
+  proofImage
+}) {
+  await ensureApplicationExtraColumns();
+  await ensureCollateralDropTable();
+
+  const cleanNote = String(dropNote || '').trim();
+  const cleanPhoto = String(proofImage || '').trim();
+  const id = `DROP-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  const nowIso = new Date().toISOString();
+
+  await turso.execute({
+    sql: `INSERT INTO collateral_drop_proofs (
+            id, application_id, lender_uid, borrower_name, borrower_phone,
+            collateral_desc, drop_note, proof_image, status, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+    args: [
+      id,
+      applicationId,
+      lenderUid,
+      borrowerName || '',
+      borrowerPhone || '',
+      collateralDesc || '',
+      cleanNote,
+      cleanPhoto,
+      nowIso
+    ]
+  });
+
+  await turso.execute({
+    sql: `UPDATE loan_applications
+          SET collateral_feedback = TRIM(COALESCE(collateral_feedback, '') || ?),
+              photo_collateral_2 = COALESCE(NULLIF(?, ''), photo_collateral_2),
+              updated_at = ?
+          WHERE id = ?`,
+    args: [
+      `\n[BUKTI DROP DIKIRIM DEBITUR${cleanNote ? `: ${cleanNote}` : ''}]`,
+      cleanPhoto,
+      nowIso,
+      applicationId
+    ]
+  });
+
+  return { id, status: 'pending' };
+}
+
+// 15. Ambil semua daftar bukti drop jaminan milik lender untuk tombol "Bukti Drop Jaminan"
+export async function getCollateralDropProofs(lenderUid) {
+  if (!lenderUid) return [];
+  await ensureCollateralDropTable();
+
+  const res = await turso.execute({
+    sql: `SELECT * FROM collateral_drop_proofs
+          WHERE lender_uid = ?
+          ORDER BY created_at DESC`,
+    args: [lenderUid]
+  });
+
+  return res.rows || [];
+}
+
+// 16. Tandai bukti drop jaminan sudah dicek & disimpan permanen oleh kreditur
+export async function verifyCollateralDropProof(proofId, applicationId, customNote = '') {
+  await ensureApplicationExtraColumns();
+  await ensureCollateralDropTable();
+
+  const nowIso = new Date().toISOString();
+  await turso.execute({
+    sql: `UPDATE collateral_drop_proofs
+          SET status = 'verified', verified_at = ?
+          WHERE id = ?`,
+    args: [nowIso, proofId]
+  });
+
+  if (applicationId) {
+    const noteText =
+      customNote || 'Barang jaminan & bukti drop telah diverifikasi oleh kreditur.';
+    await turso.execute({
+      sql: `UPDATE loan_applications
+            SET collateral_feedback = ?,
+                updated_at = ?
+            WHERE id = ?`,
+      args: [`[✓ BARANG JAMINAN DITERIMA] ${noteText}`, nowIso, applicationId]
+    });
+  }
+}
