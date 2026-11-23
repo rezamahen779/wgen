@@ -763,15 +763,13 @@ export default function QrLoanHub({
       const activeQr = await ensureQrLinkLoaded();
       if (activeQr?.token && typeof updateLenderQrSettings === 'function') {
         await updateLenderQrSettings(activeQr.token, {
-          hotlineEnabled: qrFeatureEnabled && cleanConfig.enabled,
-          hotlineLabel: cleanConfig.label,
-          hotlinePhone: cleanConfig.phone,
-          hotlineHours: cleanConfig.hours,
-          hotlineNote: cleanConfig.note,
-          // Sertakan objek JSON agar backend yang menyimpan kolom settings/metadata juga langsung terupdate
-          hotlineConfig: cleanConfig
-        });
-      }
+          hotlineEnabled: hotlineConfig.enabled ?? true,
+          hotlineLabel: hotlineConfig.label || 'Hotline Bantuan & Konfirmasi',
+          hotlinePhone: hotlineConfig.phone || '',
+          hotlineHours: hotlineConfig.hours || '',
+         hotlineNote: hotlineConfig.note || ''
+}); 
+     }
 
       if (showToast) {
         showToast('Pengaturan Hotline berhasil disimpan & tampil otomatis di halaman pengajuan!', 'success');
