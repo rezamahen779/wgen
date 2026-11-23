@@ -13,12 +13,17 @@ function generateAppId() {
   return `APP-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 }
 
-// 0a. Migrasi aman: Pastikan kolom tambahan tersedia di tabel lender_qr_links
+// 0a. Migrasi aman: Pastikan kolom tambahan & kolom Hotline tersedia di tabel lender_qr_links
 let qrColumnsEnsured = false;
 export async function ensureQrLinkExtraColumns() {
   if (qrColumnsEnsured) return;
   const alters = [
-    `ALTER TABLE lender_qr_links ADD COLUMN payment_destination TEXT DEFAULT ''`
+    `ALTER TABLE lender_qr_links ADD COLUMN payment_destination TEXT DEFAULT ''`,
+    `ALTER TABLE lender_qr_links ADD COLUMN hotline_enabled INTEGER DEFAULT 1`,
+    `ALTER TABLE lender_qr_links ADD COLUMN hotline_label TEXT DEFAULT 'Hotline Bantuan & Konfirmasi'`,
+    `ALTER TABLE lender_qr_links ADD COLUMN hotline_phone TEXT DEFAULT ''`,
+    `ALTER TABLE lender_qr_links ADD COLUMN hotline_hours TEXT DEFAULT ''`,
+    `ALTER TABLE lender_qr_links ADD COLUMN hotline_note TEXT DEFAULT ''`
   ];
   for (const sql of alters) {
     try {
@@ -114,8 +119,11 @@ export async function getOrCreateLenderQrLink({
 
   const newToken = generateRandomToken('WGN');
   await turso.execute({
-    sql: `INSERT INTO lender_qr_links (token, lender_uid, lender_name, default_currency, is_micro, payment_destination, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, 1)`,
+    sql: `INSERT INTO lender_qr_links (
+            token, lender_uid, lender_name, default_currency, is_micro,
+            payment_destination, hotline_enabled, hotline_label, hotline_phone, hotline_hours, hotline_note, is_active
+          )
+          VALUES (?, ?, ?, ?, ?, ?, 1, 'Hotline Bantuan & Konfirmasi', '', '', '', 1)`,
     args: [
       newToken,
       lenderUid,
@@ -133,7 +141,7 @@ export async function getOrCreateLenderQrLink({
   return created.rows[0];
 }
 
-// 2. Update pengaturan QR Link (nama default, mata uang, mode mikro, rekening tujuan, status aktif)
+// 2. Update pengaturan QR Link (nama default, mata uang, mode mikro, rekening tujuan, Hotline, status aktif)
 export async function updateLenderQrSettings(
   token,
   {
@@ -143,7 +151,12 @@ export async function updateLenderQrSettings(
     isActive,
     paymentDestination,
     payment_destination,
-    paymentAccountInfo
+    paymentAccountInfo,
+    hotlineEnabled,
+    hotlineLabel,
+    hotlinePhone,
+    hotlineHours,
+    hotlineNote
   } = {}
 ) {
   await ensureApplicationExtraColumns();
@@ -159,13 +172,32 @@ export async function updateLenderQrSettings(
 
   const destVal = rawDest !== null ? String(rawDest).trim() : null;
 
+  const hEnabledVal =
+    typeof hotlineEnabled === 'boolean'
+      ? hotlineEnabled
+        ? 1
+        : 0
+      : typeof hotlineEnabled === 'number'
+      ? hotlineEnabled
+      : null;
+
+  const hLabelVal = hotlineLabel !== undefined && hotlineLabel !== null ? String(hotlineLabel).trim() : null;
+  const hPhoneVal = hotlinePhone !== undefined && hotlinePhone !== null ? String(hotlinePhone).trim() : null;
+  const hHoursVal = hotlineHours !== undefined && hotlineHours !== null ? String(hotlineHours).trim() : null;
+  const hNoteVal = hotlineNote !== undefined && hotlineNote !== null ? String(hotlineNote).trim() : null;
+
   await turso.execute({
     sql: `UPDATE lender_qr_links
           SET lender_name = COALESCE(?, lender_name),
               default_currency = COALESCE(?, default_currency),
               is_micro = COALESCE(?, is_micro),
               is_active = COALESCE(?, is_active),
-              payment_destination = COALESCE(?, payment_destination)
+              payment_destination = COALESCE(?, payment_destination),
+              hotline_enabled = COALESCE(?, hotline_enabled),
+              hotline_label = COALESCE(?, hotline_label),
+              hotline_phone = COALESCE(?, hotline_phone),
+              hotline_hours = COALESCE(?, hotline_hours),
+              hotline_note = COALESCE(?, hotline_note)
           WHERE UPPER(TRIM(token)) = ?`,
     args: [
       lenderName ?? null,
@@ -173,6 +205,11 @@ export async function updateLenderQrSettings(
       typeof isMicro === 'boolean' ? (isMicro ? 1 : 0) : null,
       typeof isActive === 'boolean' ? (isActive ? 1 : 0) : null,
       destVal,
+      hEnabledVal,
+      hLabelVal,
+      hPhoneVal,
+      hHoursVal,
+      hNoteVal,
       normalizedToken
     ]
   });
@@ -187,7 +224,7 @@ export async function updateLenderQrSettings(
   }
 }
 
-// 3. Buat ulang token baru (jika link lama bocor/ingin diganti)
+// 3. Buat ulang token baru (mewarisi rekening tujuan & pengaturan Hotline sebelumnya)
 export async function regenerateLenderQrLink({
   lenderUid,
   lenderName = '',
@@ -198,12 +235,35 @@ export async function regenerateLenderQrLink({
   await ensureQrLinkExtraColumns();
 
   let resolvedDest = (paymentDestination || '').trim();
-  if (!resolvedDest && lenderUid) {
+  let prevHotline = {
+    enabled: 1,
+    label: 'Hotline Bantuan & Konfirmasi',
+    phone: '',
+    hours: '',
+    note: ''
+  };
+
+  if (lenderUid) {
     const prev = await turso.execute({
-      sql: `SELECT payment_destination FROM lender_qr_links WHERE lender_uid = ? ORDER BY created_at DESC LIMIT 1`,
+      sql: `SELECT payment_destination, hotline_enabled, hotline_label, hotline_phone, hotline_hours, hotline_note
+            FROM lender_qr_links
+            WHERE lender_uid = ?
+            ORDER BY created_at DESC LIMIT 1`,
       args: [lenderUid]
     });
-    resolvedDest = (prev.rows?.[0]?.payment_destination || '').trim();
+    const row = prev.rows?.[0];
+    if (row) {
+      if (!resolvedDest) {
+        resolvedDest = (row.payment_destination || '').trim();
+      }
+      prevHotline = {
+        enabled: row.hotline_enabled !== undefined ? Number(row.hotline_enabled) : 1,
+        label: row.hotline_label || 'Hotline Bantuan & Konfirmasi',
+        phone: row.hotline_phone || '',
+        hours: row.hotline_hours || '',
+        note: row.hotline_note || ''
+      };
+    }
   }
 
   await turso.execute({
@@ -213,9 +273,24 @@ export async function regenerateLenderQrLink({
 
   const newToken = generateRandomToken('WGN');
   await turso.execute({
-    sql: `INSERT INTO lender_qr_links (token, lender_uid, lender_name, default_currency, is_micro, payment_destination, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, 1)`,
-    args: [newToken, lenderUid, lenderName, defaultCurrency, isMicro ? 1 : 0, resolvedDest]
+    sql: `INSERT INTO lender_qr_links (
+            token, lender_uid, lender_name, default_currency, is_micro,
+            payment_destination, hotline_enabled, hotline_label, hotline_phone, hotline_hours, hotline_note, is_active
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+    args: [
+      newToken,
+      lenderUid,
+      lenderName,
+      defaultCurrency,
+      isMicro ? 1 : 0,
+      resolvedDest,
+      prevHotline.enabled,
+      prevHotline.label,
+      prevHotline.phone,
+      prevHotline.hours,
+      prevHotline.note
+    ]
   });
 
   const created = await turso.execute({
@@ -225,14 +300,15 @@ export async function regenerateLenderQrLink({
   return created.rows[0];
 }
 
-// 4. Validasi token saat calon peminjam membuka link /apply?token=...
+// 4. Validasi token saat calon peminjam membuka link /apply?token=... (otomatis membawa data Hotline)
 export async function getQrLinkByToken(token) {
   if (!token) return null;
   await ensureQrLinkExtraColumns();
   const res = await turso.execute({
-    sql: `SELECT token, lender_uid, lender_name, default_currency, is_micro, payment_destination, is_active
+    sql: `SELECT token, lender_uid, lender_name, default_currency, is_micro,
+                 payment_destination, hotline_enabled, hotline_label, hotline_phone, hotline_hours, hotline_note, is_active
           FROM lender_qr_links
-          WHERE token = ? LIMIT 1`,
+          WHERE UPPER(TRIM(token)) = ? LIMIT 1`,
     args: [token.trim().toUpperCase()]
   });
   if (res.rows.length === 0) return null;
@@ -319,7 +395,7 @@ export async function submitLoanApplication(payload) {
   };
 }
 
-// Helper internal: lengkapi payment_destination & alias field tanda tangan/sidik jari
+// Helper internal: lengkapi payment_destination, hotline_*, & alias field tanda tangan/sidik jari
 async function hydrateApplicationRecord(row) {
   if (!row) return null;
 
@@ -331,19 +407,41 @@ async function hydrateApplicationRecord(row) {
     debtorSignature: row.debtor_signature || row.debtorSignature || ''
   };
 
-  if (enriched.payment_destination && String(enriched.payment_destination).trim()) {
-    return enriched;
-  }
-  if (!enriched.qr_token) return enriched;
+  if (!enriched.qr_token && !enriched.lender_uid) return enriched;
 
   try {
     await ensureQrLinkExtraColumns();
-    const qrRes = await turso.execute({
-      sql: `SELECT payment_destination FROM lender_qr_links WHERE token = ? LIMIT 1`,
-      args: [String(enriched.qr_token).trim().toUpperCase()]
-    });
-    const dest = qrRes.rows?.[0]?.payment_destination || '';
-    return { ...enriched, payment_destination: dest };
+    const qrRes = enriched.qr_token
+      ? await turso.execute({
+          sql: `SELECT payment_destination, hotline_enabled, hotline_label, hotline_phone, hotline_hours, hotline_note
+                FROM lender_qr_links
+                WHERE UPPER(TRIM(token)) = ? LIMIT 1`,
+          args: [String(enriched.qr_token).trim().toUpperCase()]
+        })
+      : await turso.execute({
+          sql: `SELECT payment_destination, hotline_enabled, hotline_label, hotline_phone, hotline_hours, hotline_note
+                FROM lender_qr_links
+                WHERE lender_uid = ? ORDER BY created_at DESC LIMIT 1`,
+          args: [String(enriched.lender_uid).trim()]
+        });
+
+    const qrRow = qrRes.rows?.[0];
+    if (!qrRow) return enriched;
+
+    const dest =
+      enriched.payment_destination && String(enriched.payment_destination).trim()
+        ? enriched.payment_destination
+        : qrRow.payment_destination || '';
+
+    return {
+      ...enriched,
+      payment_destination: dest,
+      hotline_enabled: qrRow.hotline_enabled ?? 1,
+      hotline_label: qrRow.hotline_label || 'Hotline Bantuan & Konfirmasi',
+      hotline_phone: qrRow.hotline_phone || '',
+      hotline_hours: qrRow.hotline_hours || '',
+      hotline_note: qrRow.hotline_note || ''
+    };
   } catch {
     return enriched;
   }
