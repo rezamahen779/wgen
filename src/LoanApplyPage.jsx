@@ -219,7 +219,7 @@ function extractDestinationAccount(ticketData, qrInfo) {
   return '';
 }
 
-// Ekstrak konfigurasi Hotline dari qrInfo / ticketData / localStorage
+// Ekstrak konfigurasi Hotline dari qrInfo / ticketData / localStorage (tombol selalu tampil)
 function resolveHotlineData(qrInfo, ticketData) {
   let localHotline = null;
   try {
@@ -239,17 +239,6 @@ function resolveHotlineData(qrInfo, ticketData) {
       nestedSettings = {};
     }
   }
-
-  const isGlobalFeatureOff = localStorage.getItem('wgen_qr_feature_enabled') === 'false';
-
-  const serverEnabledFlag =
-    qrInfo?.hotline_enabled !== undefined
-      ? Number(qrInfo.hotline_enabled) === 1 || Boolean(qrInfo.hotline_enabled)
-      : ticketData?.hotline_enabled !== undefined
-      ? Number(ticketData.hotline_enabled) === 1 || Boolean(ticketData.hotline_enabled)
-      : nestedSettings.enabled !== undefined
-      ? Boolean(nestedSettings.enabled)
-      : undefined;
 
   const phone = String(
     qrInfo?.hotline_phone ||
@@ -283,13 +272,10 @@ function resolveHotlineData(qrInfo, ticketData) {
       ''
   ).trim();
 
-  const enabled =
-    serverEnabledFlag !== undefined
-      ? serverEnabledFlag
-      : !isGlobalFeatureOff && (localHotline?.enabled ?? true);
+  const hasContent = Boolean(phone || hours || note);
 
   return {
-    visible: Boolean(enabled && phone),
+    hasContent,
     phone,
     label,
     hours,
@@ -1064,26 +1050,27 @@ export default function LoanApplyPage() {
   const identitySectionNumber = selectedContract.requiresCollateral ? 5 : 4;
   const signatureSectionNumber = identitySectionNumber + 1;
 
-  // Resolusi informasi Hotline (hanya muncul berupa tombol, bukan card langsung di halaman)
+  // Resolusi informasi Hotline (tombol SELALU muncul; jika belum diisi akan tampil status kosong)
   const hotlineInfo = resolveHotlineData(qrInfo, ticketData);
   const hotlineWaDigits = hotlineInfo.phone.replace(/\D/g, '').replace(/^0/, '62');
 
-  const renderHotlineTriggerButton = () => {
-    if (!hotlineInfo.visible) return null;
-    return (
-      <button
-        type="button"
-        onClick={() => setShowHotlineModal(true)}
-        className="shrink-0 text-[11px] px-2.5 py-1 rounded bg-teal-900/60 hover:bg-teal-800/70 border border-teal-500/60 text-teal-200 font-semibold inline-flex items-center gap-1.5 transition-colors"
-      >
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-        <span>Hotline</span>
-      </button>
-    );
-  };
+  const renderHotlineTriggerButton = () => (
+    <button
+      type="button"
+      onClick={() => setShowHotlineModal(true)}
+      className="shrink-0 text-[11px] px-2.5 py-1 rounded bg-teal-900/60 hover:bg-teal-800/70 border border-teal-500/60 text-teal-200 font-semibold inline-flex items-center gap-1.5 transition-colors"
+    >
+      <span
+        className={`w-1.5 h-1.5 rounded-full ${
+          hotlineInfo.hasContent ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'
+        }`}
+      />
+      <span>Hotline</span>
+    </button>
+  );
 
   const renderHotlineModal = () => {
-    if (!showHotlineModal || !hotlineInfo.visible) return null;
+    if (!showHotlineModal) return null;
     return (
       <div
         className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
@@ -1109,58 +1096,77 @@ export default function LoanApplyPage() {
             </button>
           </div>
 
-          <div className="space-y-3 text-xs">
-            <div className="p-3 rounded-xl bg-[#071510] border border-emerald-800/80 flex items-center justify-between gap-2">
-              <div>
-                <span className="text-[10px] text-emerald-400 block">Nomor Hotline / WhatsApp:</span>
-                <span className="font-mono font-bold text-sm text-white select-all">
-                  {hotlineInfo.phone}
-                </span>
+          {!hotlineInfo.hasContent ? (
+            <div className="p-4 rounded-xl bg-[#071510] border border-emerald-800/80 text-center space-y-1.5">
+              <div className="text-xs font-semibold text-emerald-200">
+                Status Hotline: Kosong
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard?.writeText(hotlineInfo.phone);
-                  setCopiedHotline(true);
-                  setTimeout(() => setCopiedHotline(false), 2000);
-                }}
-                className="px-2.5 py-1.5 rounded-lg bg-emerald-800/70 hover:bg-emerald-700 text-emerald-100 text-[11px] font-semibold"
-              >
-                {copiedHotline ? '✓ Tersalin' : 'Salin Nomor'}
-              </button>
+              <p className="text-[11px] text-emerald-300/70 leading-relaxed">
+                Belum ada nomor atau informasi layanan Hotline yang diisi oleh pemberi pinjaman.
+              </p>
             </div>
-
-            {hotlineInfo.hours && (
-              <div className="p-2.5 rounded-xl bg-[#071510] border border-emerald-800/70">
-                <span className="text-[10px] text-emerald-400 block">Jam Layanan:</span>
-                <span className="text-emerald-100 font-medium">{hotlineInfo.hours}</span>
+          ) : (
+            <div className="space-y-3 text-xs">
+              <div className="p-3 rounded-xl bg-[#071510] border border-emerald-800/80 flex items-center justify-between gap-2">
+                <div>
+                  <span className="text-[10px] text-emerald-400 block">Nomor Hotline / WhatsApp:</span>
+                  {hotlineInfo.phone ? (
+                    <span className="font-mono font-bold text-sm text-white select-all">
+                      {hotlineInfo.phone}
+                    </span>
+                  ) : (
+                    <span className="text-xs italic text-emerald-300/60">Belum diisi (Kosong)</span>
+                  )}
+                </div>
+                {hotlineInfo.phone && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(hotlineInfo.phone);
+                      setCopiedHotline(true);
+                      setTimeout(() => setCopiedHotline(false), 2000);
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg bg-emerald-800/70 hover:bg-emerald-700 text-emerald-100 text-[11px] font-semibold"
+                  >
+                    {copiedHotline ? '✓ Tersalin' : 'Salin Nomor'}
+                  </button>
+                )}
               </div>
-            )}
 
-            {hotlineInfo.note && (
-              <div className="p-3 rounded-xl bg-teal-950/40 border border-teal-800/60 text-emerald-100/90 leading-relaxed whitespace-pre-line">
-                {hotlineInfo.note}
-              </div>
-            )}
-          </div>
+              {hotlineInfo.hours && (
+                <div className="p-2.5 rounded-xl bg-[#071510] border border-emerald-800/70">
+                  <span className="text-[10px] text-emerald-400 block">Jam Layanan:</span>
+                  <span className="text-emerald-100 font-medium">{hotlineInfo.hours}</span>
+                </div>
+              )}
+
+              {hotlineInfo.note && (
+                <div className="p-3 rounded-xl bg-teal-950/40 border border-teal-800/60 text-emerald-100/90 leading-relaxed whitespace-pre-line">
+                  {hotlineInfo.note}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-emerald-800/70">
-            <a
-              href={`https://wa.me/${hotlineWaDigits}?text=${encodeURIComponent(
-                `Halo, saya ingin bertanya terkait pengajuan pinjaman${
-                  ticketData?.id ? ` (Tiket: ${ticketData.id})` : ''
-                }.`
-              )}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs text-center"
-            >
-              Hubungi via WhatsApp
-            </a>
+            {hotlineInfo.phone && (
+              <a
+                href={`https://wa.me/${hotlineWaDigits}?text=${encodeURIComponent(
+                  `Halo, saya ingin bertanya terkait pengajuan pinjaman${
+                    ticketData?.id ? ` (Tiket: ${ticketData.id})` : ''
+                  }.`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs text-center"
+              >
+                Hubungi via WhatsApp
+              </a>
+            )}
             <button
               type="button"
               onClick={() => setShowHotlineModal(false)}
-              className="py-2.5 px-4 rounded-xl bg-[#071510] border border-emerald-800 hover:bg-emerald-950 text-emerald-200 font-semibold text-xs"
+              className="flex-1 py-2.5 px-4 rounded-xl bg-[#071510] border border-emerald-800 hover:bg-emerald-950 text-emerald-200 font-semibold text-xs"
             >
               Tutup
             </button>
@@ -1449,7 +1455,7 @@ export default function LoanApplyPage() {
 
                   {progress.remainingAmount > 0 && (
                     <div className="space-y-2.5 pt-1">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className={`grid grid-cols-1 ${hotlineWaDigits ? 'sm:grid-cols-2' : ''} gap-2`}>
                         <button
                           type="button"
                           onClick={() => setShowPaymentReportForm((prev) => !prev)}
@@ -1457,30 +1463,32 @@ export default function LoanApplyPage() {
                         >
                           {showPaymentReportForm ? 'Tutup Form Lapor' : 'Lapor Sudah Transfer Cicilan'}
                         </button>
-                        <a
-                          href={`https://wa.me/${hotlineWaDigits}?text=${encodeURIComponent(
-                            `Halo, saya ${ticketData.borrower_name} (Tiket: ${ticketData.id}). Saya sudah transfer pembayaran ${
-                              progress.isInstallment
-                                ? `angsuran ke-${Math.min(
-                                    progress.installmentCount,
-                                    progress.confirmedTermCount + 1
-                                  )}`
-                                : 'pelunasan pinjaman'
-                            } sebesar ${formatCurrencyAmount(
-                              progress.perTermAmount,
-                              ticketData.currency
-                            )}${
-                              creditorDestinationAccount
-                                ? ` ke rekening tujuan (${creditorDestinationAccount})`
-                                : ''
-                            }. Mohon dicek mutasinya ya.`
-                          )}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="w-full py-2 px-3 rounded-lg bg-[#071510] border border-emerald-600 hover:bg-emerald-900/40 text-emerald-300 font-semibold text-[11px] text-center"
-                        >
-                          Kirim Bukti via WA
-                        </a>
+                        {hotlineWaDigits && (
+                          <a
+                            href={`https://wa.me/${hotlineWaDigits}?text=${encodeURIComponent(
+                              `Halo, saya ${ticketData.borrower_name} (Tiket: ${ticketData.id}). Saya sudah transfer pembayaran ${
+                                progress.isInstallment
+                                  ? `angsuran ke-${Math.min(
+                                      progress.installmentCount,
+                                      progress.confirmedTermCount + 1
+                                    )}`
+                                  : 'pelunasan pinjaman'
+                              } sebesar ${formatCurrencyAmount(
+                                progress.perTermAmount,
+                                ticketData.currency
+                              )}${
+                                creditorDestinationAccount
+                                  ? ` ke rekening tujuan (${creditorDestinationAccount})`
+                                  : ''
+                              }. Mohon dicek mutasinya ya.`
+                            )}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="w-full py-2 px-3 rounded-lg bg-[#071510] border border-emerald-600 hover:bg-emerald-900/40 text-emerald-300 font-semibold text-[11px] text-center"
+                          >
+                            Kirim Bukti via WA
+                          </a>
+                        )}
                       </div>
 
                       {showPaymentReportForm && (
@@ -1598,16 +1606,18 @@ export default function LoanApplyPage() {
                         {showDropProofForm ? 'Tutup Form Bukti Drop' : 'Upload Bukti Drop Jaminan'}
                       </button>
 
-                      <a
-                        href={`https://wa.me/${hotlineWaDigits}?text=${encodeURIComponent(
-                          `Halo, saya ${ticketData.borrower_name} (Tiket: ${ticketData.id}). Barang jaminan (${ticketData.collateral_desc}) sudah saya antar/kirim ke alamat drop-off sesuai instruksi. Mohon dicek ya.`
-                        )}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-[11px]"
-                      >
-                        Konfirmasi via WhatsApp
-                      </a>
+                      {hotlineWaDigits && (
+                        <a
+                          href={`https://wa.me/${hotlineWaDigits}?text=${encodeURIComponent(
+                            `Halo, saya ${ticketData.borrower_name} (Tiket: ${ticketData.id}). Barang jaminan (${ticketData.collateral_desc}) sudah saya antar/kirim ke alamat drop-off sesuai instruksi. Mohon dicek ya.`
+                          )}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-[11px]"
+                        >
+                          Konfirmasi via WhatsApp
+                        </a>
+                      )}
                     </div>
                   )}
 
