@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Plus, Search, Trash2, Edit2, Camera, Download, 
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Plus, Search, Trash2, Edit2, Camera, Download,
   CheckSquare, Square, FileText, User, Landmark, Calendar, AlertCircle, Percent, CreditCard, Wallet, Banknote, Shuffle, Coins, Phone, X, Clock, History, Gift, ChevronDown, ChevronUp, IdCard, UserCheck, AlertTriangle, Bell, Copy, Check, MapPin, Fingerprint, PenTool
 } from 'lucide-react';
 
@@ -8,30 +8,9 @@ import { turso } from './lib/turso';
 import { auth } from './lib/firebase';
 import { convertCurrencyDynamic, fetchLiveExchangeRates, getCurrencySymbolDynamic } from './lib/currencyService';
 
-import { QrCode, Inbox } from 'lucide-react';
-import { QRCodeCanvas } from 'qrcode.react';
-import {
-  getOrCreateLenderQrLink,
-  updateLenderQrSettings,
-  regenerateLenderQrLink,
-  getIncomingApplications,
-  updateApplicationStatus,
-  updateApplicationFeedback,
-  recordVerifiedInstallmentPayment
-} from './services/qrLoanService';
+import QrLoanHub from './QrLoanHub';
 
-// Ganti domain di bawah ini dengan link Vercel / web public WGen Note kamu
-const PUBLIC_WEB_ORIGIN =
-  window.location.hostname === 'localhost' && !window.Capacitor
-    ? window.location.origin
-    : 'https://formadd.vercel.app';
-
-
-export default function DebtManager({ 
-  language = 'id',
-  theme: themeProp,
-  isDarkMode: isDarkModeProp
-}) {
+export default function DebtManager({ language = 'id', themeProp, isDarkModeProp }) {
   // 1. Sinkronisasi Otomatis Tema Warna & Display Mode (Dark/Light) dari Sistem
   const [activeTheme, setActiveTheme] = useState(() => {
     return themeProp || localStorage.getItem('wgen_theme') || 'amber';
@@ -90,12 +69,12 @@ export default function DebtManager({
     const cleanValue = String(value).replace(/\D/g, '');
     return cleanValue.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   };
+
   // =========================================================================
   // PENGUNCI BATAS NOMINAL PER KONTRAK (KONTRAK 1 MIKRO, KONTRAK 2, KONTRAK 3)
   // =========================================================================
   const getContractLimits = ({ isMicro = false, hasCollateral = false, currencyCode = 'IDR' }) => {
     const cleanCurr = (currencyCode || 'IDR').toUpperCase();
-    // Batas dasar dalam IDR
     const minIdr = isMicro ? 100000 : 300000;
     const maxIdr = isMicro ? 500000 : hasCollateral ? 50000000 : 10999999;
 
@@ -118,7 +97,6 @@ export default function DebtManager({
     return { minVal, maxVal, contractLabel, cleanCurr };
   };
 
-  // Clamp otomatis input nominal agar tidak bisa melewati batas maksimal kontrak
   const clampContractAmount = (rawDigits, limits) => {
     if (!rawDigits) return '';
     const num = Number(rawDigits);
@@ -126,26 +104,6 @@ export default function DebtManager({
     if (num > limits.maxVal) return String(limits.maxVal);
     return String(num);
   };
-
-  // Deteksi batas kontrak otomatis untuk pengajuan masuk (QR / Lelang Pokok)
-  const getAppContractLimits = (app) => {
-    if (!app) {
-      return getContractLimits({ isMicro: false, hasCollateral: false, currencyCode: managerCurrency || 'IDR' });
-    }
-    const curr = (app.currency || managerCurrency || 'IDR').toUpperCase();
-    const hasCol = Number(app.has_collateral) === 1;
-    const reqAmt = Number(app.requested_amount || 0);
-    const reqIdr = curr === 'IDR' ? reqAmt : convertCurrencyDynamic(reqAmt, curr, 'IDR', liveRates);
-    const isMicroApp = !hasCol && reqIdr > 0 && reqIdr <= 500000;
-
-    return getContractLimits({
-      isMicro: isMicroApp,
-      hasCollateral: hasCol,
-      currencyCode: curr
-    });
-  };
-
-
 
   const getThemeClasses = (themeName) => {
     const tName = String(themeName).toLowerCase();
@@ -218,7 +176,6 @@ export default function DebtManager({
   const themeStyle = getThemeClasses(activeTheme);
 
   // Kamus Bahasa Lengkap (Termasuk Pasal Perjanjian Kondisional & Lampiran 4 Halaman - 7 Slot Foto)
- // Kamus Bahasa Lengkap (Termasuk Pasal Perjanjian Kondisional & Lampiran 4 Halaman - 7 Slot Foto)
   const translations = {
     id: {
       title: 'WGen Manager Pinjaman',
@@ -415,7 +372,7 @@ export default function DebtManager({
         p3_without_1: 'Pinjaman ini diberikan atas dasar kepercayaan pribadi antara Pihak Pertama dan Pihak Kedua tanpa penyerahan barang jaminan atau agunan fisik (Unsecured Personal Loan).',
         p3_without_2: 'Pihak Kedua bertanggung jawab penuh secara pribadi atas pelunasan seluruh pokok pinjaman, imbalan jasa yang disepakati, serta denda keterlambatan (apabila ada) tepat pada waktunya.',
         p3_without_3: 'Seluruh harta kekayaan Pihak Kedua menjadi tanggungan pemenuhan perikatan sesuai ketentuan hukum perdata yang berlaku.',
-       pasal4TitleWith: 'PASAL 4 - WANPRESTASI & PENYELESAIAN JAMINAN',
+        pasal4TitleWith: 'PASAL 4 - WANPRESTASI & PENYELESAIAN JAMINAN',
         p4_with_1: 'Apabila Pihak Kedua terlambat melakukan pembayaran melewati masa toleransi, Pihak Pertama berhak menyampaikan peringatan penagihan secara lisan maupun tertulis.',
         p4_with_2: 'Pihak Kedua tetap berkewajiban menyelesaikan seluruh kewajiban pembayaran yang telah jatuh tempo, termasuk sisa pokok pinjaman, imbalan jasa yang disepakati, serta denda keterlambatan sesuai ketentuan Pasal 2.',
         p4_with_3: 'Khusus pinjaman dengan tenor 1 (satu) bulan, apabila Pihak Kedua tidak melakukan pelunasan setelah melewati tanggal jatuh tempo dan masa toleransi, kewajiban pembayaran tetap berlaku dan penyelesaian dapat dilakukan melalui musyawarah atau mekanisme hukum yang berlaku.',
@@ -677,7 +634,8 @@ export default function DebtManager({
         p4_without_2: '乙は、期日が到来した残元本および第2条の規定に基づき発生する延滞損害金を含むすべての支払義務を完了しなければならない。',
         p4_without_3: '特に借入期間が1ヶ月の貸付において、乙が返済期日および支払猶予期間を経過しても完済しない場合、乙は本契約の定めに従い残元本全額および延滞損害金を完済する義務を引き続き負うものとする。',
         p4_without_4: '滞納が2ヶ月連続で継続した場合、甲乙双方は協議を行い、書面による返済計画（リスケジュール）の作成または円満な債務解決方法を取り決めるものとする。',
-        p4_without_5: '協議が整わない場合、甲は本契約書および添付の証拠資料を証拠として用い、適用される法令に従い民事上の法的手続きを取ることができる。',        pasal5Title: '第5条（合意および署名）',
+        p4_without_5: '協議が整わない場合、甲は本契約書および添付の証拠資料を証拠として用い、適用される法令に従い民事上の法的手続きを取ることができる。',
+        pasal5Title: '第5条（合意および署名）',
         p5_1: '甲および乙は、本契約の全条項を十分に読み理解した上で、自由意思に基づき何らの強制もなく本契約に同意する。',
         p5_2: '本契約は、アプリ上の電子署名または印刷書面への自署・押印（指印）により法的に有効に成立する。',
         p5_3: '添付された取引明細、返済履歴、分割シミュレーションおよび写真資料はすべて本契約と不可分一体の効力を有する。',
@@ -1464,8 +1422,8 @@ export default function DebtManager({
         photoEmptyHint: '请粘贴 / 附着实体照片'
       }
     }
-  };  
-   const t = translations[language] || translations['id'];
+  };
+  const t = translations[language] || translations['id'];
 
   const currenciesList = [
     { code: 'AED', label: 'AED (DH - UAE Dirham)' },
@@ -1546,6 +1504,7 @@ export default function DebtManager({
   const [creditorSignature, setCreditorSignature] = useState(null);
   const [debtorFingerprint, setDebtorFingerprint] = useState(null);
   const [debtorSignature, setDebtorSignature] = useState(null);
+
   // 7 State Foto Khusus Halaman 4
   const [photoIdDebtor, setPhotoIdDebtor] = useState('');
   const [photoSelfieDebtor, setPhotoSelfieDebtor] = useState('');
@@ -1563,21 +1522,10 @@ export default function DebtManager({
 
   const [newCatName, setNewCatName] = useState('');
   const [newTypeName, setNewTypeName] = useState('');
-  const [showQrModal, setShowQrModal] = useState(false);
-  const [qrLinkData, setQrLinkData] = useState(null);
-  const [qrPaymentAccount, setQrPaymentAccount] = useState('');
-  const [qrPaymentMethod, setQrPaymentMethod] = useState('transfer');
-  const [loadingQr, setLoadingQr] = useState(false);
-  const [copiedQrLink, setCopiedQrLink] = useState(false);
 
-  const [showInboxModal, setShowInboxModal] = useState(false);
-  const [incomingApps, setIncomingApps] = useState([]);
   const [approvedApplicationId, setApprovedApplicationId] = useState(null);
-
- const [pendingInstallmentReports, setPendingInstallmentReports] = useState([]);
-  const [showTransferNotifModal, setShowTransferNotifModal] = useState(false);
-  const [verifyingReportId, setVerifyingReportId] = useState(null);
-  const [toastInfo, setToastInfo] = useState(null); // { message: string, type: 'success' | 'error' | 'info' }
+  const markQrAppApprovedRef = useRef(null);
+  const [toastInfo, setToastInfo] = useState(null);
 
   const showToast = (message, type = 'success') => {
     setToastInfo({ message, type });
@@ -1585,660 +1533,187 @@ export default function DebtManager({
       setToastInfo((prev) => (prev && prev.message === message ? null : prev));
     }, 3500);
   };
-  const [agreedAppsNotif, setAgreedAppsNotif] = useState([]);
 
-  const loadQrApplicationsAndReports = async () => {
-    const uid = auth?.currentUser?.uid || localStorage.getItem('wgen_last_uid');
-    if (!uid) return;
-    try {
-      const allRows = await getIncomingApplications(uid, 'all');
+  // Sinkronkan laporan transfer cicilan terverifikasi dari QrLoanHub ke kartu piutang lokal & Turso
+  const handleApplyVerifiedTransferToDebt = async (report) => {
+    const paidNominal = Number(report.amount) || 0;
+    const instNumber = Number(report.installmentNumber) || 1;
 
-    // Status yang dianggap "Debitur Setuju / Oke" atas hasil lelang
-      const AGREED_STATUSES = ['borrower_agreed', 'agreed', 'accepted', 'confirmed_by_borrower'];
+    const normalizedReportPhone = String(report.borrowerPhone || report.borrower_phone || '').replace(/\D/g, '');
+    const normalizedReportName = String(report.borrowerName || report.borrower_name || '').trim().toLowerCase();
 
-      // Status ketika debitur minta tambah / mengajukan penawaran balik
-      const BORROWER_COUNTER_STATUSES = [
-        'borrower_counter',
-        'borrower_counter_offer',
-        'additional_requested',
-        'topup_requested',
-        'negotiating',
-        'renegotiate',
-        'counter_by_borrower'
+    const targetDebt =
+      debts.find(
+        (d) => String(d.qrApplicationId || '') === String(report.applicationId)
+      ) ||
+      debts.find((d) => {
+        if (d.statusKey === 'paid') return false;
+        const debtPhone = String(d.borrowerPhone || '').replace(/\D/g, '');
+        const debtName = String(d.name || '').trim().toLowerCase();
+        const phoneMatch =
+          normalizedReportPhone &&
+          debtPhone &&
+          (debtPhone.endsWith(normalizedReportPhone.slice(-9)) ||
+            normalizedReportPhone.endsWith(debtPhone.slice(-9)));
+        return phoneMatch || (normalizedReportName && debtName === normalizedReportName);
+      });
+
+    if (targetDebt && paidNominal > 0) {
+      const nowIso = new Date().toISOString();
+      const todayStr = formatLocalDateStr(new Date());
+      const prevPaid = Number(targetDebt.totalPaidAmount || 0);
+      const totalBill = Number(targetDebt.totalAmount || targetDebt.amount || 0);
+      const nextPaid = prevPaid + paidNominal;
+      const isNowPaid = totalBill > 0 && nextPaid >= totalBill;
+
+      const prevInst = Number(targetDebt.paidInstallments || 0);
+      const maxInst = Number(targetDebt.installmentCount || 1);
+      const nextInst = targetDebt.isInstallment
+        ? isNowPaid
+          ? maxInst
+          : Math.min(maxInst, Math.max(prevInst + 1, instNumber))
+        : isNowPaid
+        ? 1
+        : 0;
+
+      const newPaymentEntry = {
+        id: Date.now(),
+        timestamp: `${todayStr} ${new Date().toTimeString().slice(0, 5)}`,
+        amount: paidNominal,
+        methodKey: 'transfer',
+        termIndex: instNumber,
+        isOneTerm: true,
+        lateFeeCharged: 0,
+        daysLate: 0
+      };
+
+      const updatedHistory = [
+        newPaymentEntry,
+        ...(Array.isArray(targetDebt.paymentHistory) ? targetDebt.paymentHistory : [])
       ];
 
-      // Helper deteksi apakah debitur minta tambah / nawar balik (cek status MAUPUN isi kolom)
-      const isRowBorrowerCounter = (row) => {
-        const st = String(row.status || '').toLowerCase().trim();
-        if (BORROWER_COUNTER_STATUSES.includes(st)) return true;
-
-        const hasBorrowerAmt =
-          row.borrower_counter_amount !== undefined &&
-          row.borrower_counter_amount !== null &&
-          Number(row.borrower_counter_amount) > 0;
-
-        const hasBorrowerNote = Boolean(
-          row.borrower_reply_note && String(row.borrower_reply_note).trim() !== ''
-        );
-
-        // Jika status kembali ke 'pending' setelah sebelumnya ada lelang/penawaran, atau ada nominal/catatan balasan debitur
-        if ((st === 'pending' || st === 'counter_offer') && (hasBorrowerAmt || hasBorrowerNote)) {
-          return true;
-        }
-
-        return false;
+      const updatedDebt = {
+        ...targetDebt,
+        qrApplicationId: targetDebt.qrApplicationId || String(report.applicationId),
+        totalPaidAmount: nextPaid,
+        paidInstallments: nextInst,
+        statusKey: isNowPaid ? 'paid' : targetDebt.statusKey,
+        paymentHistory: updatedHistory,
+        updatedAt: nowIso
       };
 
-      const isRowBorrowerAgreed = (row) => {
-        const st = String(row.status || '').toLowerCase().trim();
-        return AGREED_STATUSES.includes(st);
-      };
+      const nextDebts = debts.map((item) => (String(item.id) === String(targetDebt.id) ? updatedDebt : item));
+      setDebts(nextDebts);
 
-      // 1. Semua pengajuan yang belum final (approved / rejected) tetap masuk Inbox
-      setIncomingApps(
-        allRows.filter((row) => {
-          const st = String(row.status || '').toLowerCase().trim();
-          return st !== 'approved' && st !== 'rejected';
-        })
-      );
-
-      // 2. Tangkap SEMUA yang disetujui debitur ATAU debitur minta tambah / nawar balik
-      setAgreedAppsNotif(
-        allRows.filter((row) => {
-          const st = String(row.status || '').toLowerCase().trim();
-          if (st === 'approved' || st === 'rejected') return false;
-          return isRowBorrowerAgreed(row) || isRowBorrowerCounter(row);
-        })
-      );
-
-      // 3. Laporan transfer cicilan masuk dari peminjam
-      const reports = [];
-      for (const app of allRows) {
-        if (app.status !== 'approved') continue;
-        let hist = [];
-        try {
-          hist = JSON.parse(app.installment_history || '[]');
-        } catch {
-          hist = [];
-        }
-        if (Array.isArray(hist)) {
-          for (const item of hist) {
-            if (item.status === 'pending_verification') {
-              reports.push({
-                ...item,
-                applicationId: app.id,
-                borrowerName: app.borrower_name,
-                borrowerPhone: app.borrower_phone,
-                currency: app.currency || 'IDR',
-                totalPrincipal: Number(app.requested_amount || 0),
-                rewardPercent: Number(app.reward_percent ?? 20)
-              });
-            }
-          }
-        }
-      }
-      setPendingInstallmentReports(reports);
-    } catch (err) {
-      console.error('Gagal memuat pengajuan & laporan transfer masuk:', err);
-    }
-  };
-
- useEffect(() => {
-    let isMounted = true;
-
-    const refreshIncomingApps = async () => {
       try {
-        if (isMounted) {
-          await loadQrApplicationsAndReports();
-        }
+        localStorage.setItem('wgen_debts_data', JSON.stringify(nextDebts));
+      } catch (storageErr) {
+        console.warn('Storage quota warning:', storageErr);
+      }
+
+      try {
+        const userId = auth?.currentUser?.uid || localStorage.getItem('wgen_last_uid') || 'wgen_user';
+        await turso.execute({
+          sql: `UPDATE debts SET 
+            qr_application_id = ?, total_paid_amount = ?, paid_installments = ?, status_key = ?, payment_history = ?, updated_at = ? 
+            WHERE id = ? AND user_id = ?`,
+          args: [
+            updatedDebt.qrApplicationId,
+            updatedDebt.totalPaidAmount,
+            updatedDebt.paidInstallments,
+            updatedDebt.statusKey,
+            JSON.stringify(updatedDebt.paymentHistory),
+            nowIso,
+            String(updatedDebt.id),
+            userId
+          ]
+        });
       } catch (err) {
-        // Abaikan error jaringan sesaat saat offline
+        console.warn('Offline Sync Transfer:', err.message);
       }
-    };
-
-    refreshIncomingApps();
-
-    const intervalId = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        refreshIncomingApps();
-      }
-    }, 3800);
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        refreshIncomingApps();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      isMounted = false;
-      clearInterval(intervalId);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, []);
-  // Fungsi 1-klik saat kreditur mengonfirmasi mutasi masuk
-  const handleConfirmTransferFromBorrower = async (report) => {
-    setVerifyingReportId(report.id);
-    try {
-      const paidNominal = Number(report.amount) || 0;
-      const instNumber = Number(report.installmentNumber) || 1;
-
-      // 1. Verifikasi di tiket QR (tetap pakai fungsi service aslimu)
-      await recordVerifiedInstallmentPayment({
-        applicationId: report.applicationId,
-        amountReceived: paidNominal,
-        installmentNumber: instNumber,
-        note: `Diverifikasi via Notifikasi Transfer (${report.transferMethod || 'Transfer'})`
-      });
-
-      // 2. Cari kartu piutang utama yang cocok di state debts
-      const normalizedReportPhone = String(report.borrowerPhone || report.borrower_phone || '').replace(/\D/g, '');
-      const normalizedReportName = String(report.borrowerName || report.borrower_name || '').trim().toLowerCase();
-
-      const targetDebt =
-        debts.find(
-          (d) => String(d.qrApplicationId || '') === String(report.applicationId)
-        ) ||
-        debts.find((d) => {
-          if (d.statusKey === 'paid') return false;
-          const debtPhone = String(d.borrowerPhone || '').replace(/\D/g, '');
-          const debtName = String(d.name || '').trim().toLowerCase();
-          const phoneMatch =
-            normalizedReportPhone &&
-            debtPhone &&
-            (debtPhone.endsWith(normalizedReportPhone.slice(-9)) ||
-              normalizedReportPhone.endsWith(debtPhone.slice(-9)));
-          return phoneMatch || (normalizedReportName && debtName === normalizedReportName);
-        });
-
-      // 3. Jika kartu piutang ditemukan, update paymentHistory, totalPaidAmount & status
-      if (targetDebt && paidNominal > 0) {
-        const nowIso = new Date().toISOString();
-        const todayStr = formatLocalDateStr(new Date());
-        const prevPaid = Number(targetDebt.totalPaidAmount || 0);
-        const totalBill = Number(targetDebt.totalAmount || targetDebt.amount || 0);
-        const nextPaid = prevPaid + paidNominal;
-        const isNowPaid = totalBill > 0 && nextPaid >= totalBill;
-
-        const prevInst = Number(targetDebt.paidInstallments || 0);
-        const maxInst = Number(targetDebt.installmentCount || 1);
-        const nextInst = targetDebt.isInstallment
-          ? isNowPaid
-            ? maxInst
-            : Math.min(maxInst, Math.max(prevInst + 1, instNumber))
-          : isNowPaid
-          ? 1
-          : 0;
-const newPaymentEntry = {
-          id: Date.now(),
-          timestamp: `${todayStr} ${new Date().toTimeString().slice(0, 5)}`,
-          amount: paidNominal,
-          methodKey: 'transfer',
-          termIndex: instNumber,
-          isOneTerm: true,
-          lateFeeCharged: 0,
-          daysLate: 0
-        };
-
-        const updatedHistory = [
-          newPaymentEntry,
-          ...(Array.isArray(targetDebt.paymentHistory) ? targetDebt.paymentHistory : [])
-        ];
-        
-        const updatedDebt = {
-          ...targetDebt,
-          qrApplicationId: targetDebt.qrApplicationId || String(report.applicationId),
-          totalPaidAmount: nextPaid,
-          paidInstallments: nextInst,
-          statusKey: isNowPaid ? 'paid' : targetDebt.statusKey,
-          paymentHistory: updatedHistory,
-          updatedAt: nowIso
-        };
-
-        const nextDebts = debts.map((item) => (String(item.id) === String(targetDebt.id) ? updatedDebt : item));
-        setDebts(nextDebts);
-
-        try {
-          localStorage.setItem('wgen_debts_data', JSON.stringify(nextDebts));
-        } catch (storageErr) {
-          console.warn('Storage quota warning:', storageErr);
-        }
-
-        if (typeof syncSingleDebtToTurso === 'function') {
-          await syncSingleDebtToTurso(updatedDebt);
-        }
-      }
-
-      // 4. Refresh daftar notifikasi supaya laporan ini langsung hilang dari antrean pending
-      await loadQrApplicationsAndReports();
-      showToast(
-        targetDebt
-          ? `Mutasi angsuran ke-${instNumber} (${report.currency} ${paidNominal.toLocaleString('id-ID')}) terverifikasi & masuk ke kartu "${targetDebt.name}"!`
-          : `Mutasi angsuran ke-${instNumber} (${report.currency} ${paidNominal.toLocaleString('id-ID')}) terverifikasi!`,
-        'success'
-      );
-    } catch (err) {
-      showToast(err.message || 'Gagal memverifikasi pembayaran masuk.', 'error');
-    } finally {
-      setVerifyingReportId(null);
     }
-  };
-  
-  const handleOpenQrModal = async () => {
-  const uid = auth?.currentUser?.uid || localStorage.getItem('wgen_last_uid');
-  if (!uid) return;
-  setShowQrModal(true);
-  setLoadingQr(true);
-  try {
-    const savedAcc = localStorage.getItem('wgen_default_payment_account') || '';
-    const savedMethod = localStorage.getItem('wgen_default_payment_method') || 'transfer';
 
-    const data = await getOrCreateLenderQrLink({
-      lenderUid: uid,
-      lenderName: auth?.currentUser?.displayName || localStorage.getItem('wgen_username') || '',
-      defaultCurrency: managerCurrency || 'IDR',
-      isMicro: false
-    });
-
-    const finalAcc = data?.payment_account_info || savedAcc;
-    setQrPaymentAccount(finalAcc);
-    setQrPaymentMethod(data?.payment_method_key || savedMethod);
-    setQrLinkData({
-      ...data,
-      payment_account_info: finalAcc,
-      payment_method_key: data?.payment_method_key || savedMethod
-    });
-  } catch (err) {
-    console.error(err);
-  } finally {
-    setLoadingQr(false);
-  }
-};
-const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodValue = qrPaymentMethod) => {
-  const cleanAcc = String(accValue || '').trim();
-  localStorage.setItem('wgen_default_payment_account', cleanAcc);
-  localStorage.setItem('wgen_default_payment_method', methodValue);
-
-  setQrLinkData((prev) =>
-    prev
-      ? {
-          ...prev,
-          payment_account_info: cleanAcc,
-          payment_method_key: methodValue
-        }
-      : prev
-  );
-
-  if (qrLinkData?.token && typeof updateLenderQrSettings === 'function') {
-    try {
-      await updateLenderQrSettings(qrLinkData.token, {
-        paymentDestination: cleanAcc,
-        paymentAccountInfo: cleanAcc,
-        paymentMethodKey: methodValue
-      });
-    } catch (err) {
-      console.warn('Gagal menyinkronkan rekening QR ke server:', err);
-    }
-  }
-};
-  const handleDownloadQrPng = () => {
-    const canvas = document.getElementById('wgen-loan-qr-canvas');
-    if (!canvas) return;
-    const link = document.createElement('a');
-    link.download = `QR-Pinjaman-${qrLinkData?.token || 'WGen'}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
+    return targetDebt;
   };
 
- const handleApproveApplication = (app) => {
-  const todayStr = formatLocalDateStr(new Date());
-  const months = Number(app.tenor_months) || 1;
-  const dueObj = addMonthsSafely(todayStr, months);
-  const dueStr = dueObj ? formatLocalDateStr(dueObj) : '';
+  // Mengisi form DebtManager saat pengajuan dari QrLoanHub disetujui (ACC)
+  const handleApproveApplication = (app, qrLinkData = null) => {
+    const todayStr = formatLocalDateStr(new Date());
+    const months = Number(app.tenor_months) || 1;
+    const dueObj = addMonthsSafely(todayStr, months);
+    const dueStr = dueObj ? formatLocalDateStr(dueObj) : '';
 
-  // 1. Ambil persentase imbalan jasa dari pengajuan/lelang QR (bukan 0)
-  const appliedReward =
-    app.reward_percent !== undefined && app.reward_percent !== null && app.reward_percent !== ''
-      ? Number(app.reward_percent)
-      : Number(app.has_collateral) === 1
-      ? 12.5
-      : 20;
+    const appliedReward =
+      app.reward_percent !== undefined && app.reward_percent !== null && app.reward_percent !== ''
+        ? Number(app.reward_percent)
+        : Number(app.has_collateral) === 1
+        ? 12.5
+        : 20;
 
-  // 2. Deteksi otomatis apakah termasuk Pinjaman Mikro (tanpa jaminan & <= 500rb)
-  const isMicroApp =
-    Number(app.has_collateral) !== 1 &&
-    (app.currency || 'IDR') === 'IDR' &&
-    Number(app.requested_amount || 0) <= 500000;
+    const isMicroApp =
+      Number(app.has_collateral) !== 1 &&
+      (app.currency || 'IDR') === 'IDR' &&
+      Number(app.requested_amount || 0) <= 500000;
 
-  // 3. Ambil rekening/e-wallet default pemberi pinjaman (dari pengaturan QR atau riwayat terakhir)
-  const savedAccountInfo =
-    qrLinkData?.payment_account_info ||
-    localStorage.getItem('wgen_default_payment_account') ||
-    debts.find((d) => d.paymentAccountInfo)?.paymentAccountInfo ||
-    '';
+    const savedAccountInfo =
+      qrLinkData?.payment_account_info ||
+      localStorage.getItem('wgen_default_payment_account') ||
+      debts.find((d) => d.paymentAccountInfo)?.paymentAccountInfo ||
+      '';
 
-  const savedMethodKey =
-    qrLinkData?.payment_method_key ||
-    localStorage.getItem('wgen_default_payment_method') ||
-    'transfer';
+    const savedMethodKey =
+      qrLinkData?.payment_method_key ||
+      localStorage.getItem('wgen_default_payment_method') ||
+      'transfer';
 
-  // 4. Prioritaskan nominal pokok hasil lelang jika tersedia
-  const finalPrincipalAmount =
-  app.borrower_counter_amount !== undefined &&
-  app.borrower_counter_amount !== null &&
-  Number(app.borrower_counter_amount) > 0
-    ? Number(app.borrower_counter_amount)
-    : app.counter_principal_amount !== undefined &&
-      app.counter_principal_amount !== null &&
-      Number(app.counter_principal_amount) > 0
-    ? Number(app.counter_principal_amount)
-    : Number(app.requested_amount || '');
+    const finalPrincipalAmount =
+      app.borrower_counter_amount !== undefined &&
+      app.borrower_counter_amount !== null &&
+      Number(app.borrower_counter_amount) > 0
+        ? Number(app.borrower_counter_amount)
+        : app.counter_principal_amount !== undefined &&
+          app.counter_principal_amount !== null &&
+          Number(app.counter_principal_amount) > 0
+        ? Number(app.counter_principal_amount)
+        : Number(app.requested_amount || '');
 
-  setCurrentDebtId(null);
-  setName(app.borrower_name || '');
-  setLenderName(
-    qrLinkData?.lender_name ||
-      auth?.currentUser?.displayName ||
-      localStorage.getItem('wgen_username') ||
-      ''
-  );
-  setDebtorIdNo(app.debtor_id || '');
-  setDebtorAddress(app.debtor_address || '');
-  setBorrowerPhone(app.borrower_phone || '');
-  setEmergencyPhone(app.emergency_phone || '');
-  setDebtCurrency(app.currency || managerCurrency || 'IDR');
-  setAmount(finalPrincipalAmount ? String(finalPrincipalAmount) : '');
+    setCurrentDebtId(null);
+    setName(app.borrower_name || '');
+    setLenderName(
+      qrLinkData?.lender_name ||
+        auth?.currentUser?.displayName ||
+        localStorage.getItem('wgen_username') ||
+        ''
+    );
+    setDebtorIdNo(app.debtor_id || '');
+    setDebtorAddress(app.debtor_address || '');
+    setBorrowerPhone(app.borrower_phone || '');
+    setEmergencyPhone(app.emergency_phone || '');
+    setDebtCurrency(app.currency || managerCurrency || 'IDR');
+    setAmount(finalPrincipalAmount ? String(finalPrincipalAmount) : '');
 
-  // Otomatis isi Imbalan Jasa & Mode Mikro
-  setBonusPercent(String(appliedReward));
-  setBonusType('bonus');
-  setLateFeeMode(isMicroApp ? 'micro' : 'auto');
+    setBonusPercent(String(appliedReward));
+    setBonusType('bonus');
+    setLateFeeMode(isMicroApp ? 'micro' : 'auto');
 
-  // Otomatis isi Metode & Rekening Tujuan Pembayaran
-  setPaymentMethodKey(savedMethodKey);
-  setPaymentAccountInfo(savedAccountInfo);
+    setPaymentMethodKey(savedMethodKey);
+    setPaymentAccountInfo(savedAccountInfo);
 
-  setStartDate(todayStr);
-  setDueDate(dueStr);
-  setIsInstallment(Number(app.is_installment) === 1);
-  setInstallmentCount(String(months));
-  setPaidInstallments('0');
-  setCollateral(Number(app.has_collateral) === 1);
-  setCollateralDesc(app.collateral_desc || '');
-  setPhotoIdDebtor(app.photo_id || '');
-  setPhotoSelfieDebtor(app.photo_selfie || '');
-  setPhotoSelfieIdDebtor(app.photo_selfie_id || '');
-  setPhotoCollateral1(app.photo_collateral_1 || '');
-  setPhotoCollateral2(app.photo_collateral_2 || '');
-  setApprovedApplicationId(app.id);
+    setStartDate(todayStr);
+    setDueDate(dueStr);
+    setIsInstallment(Number(app.is_installment) === 1);
+    setInstallmentCount(String(months));
+    setPaidInstallments('0');
+    setCollateral(Number(app.has_collateral) === 1);
+    setCollateralDesc(app.collateral_desc || '');
+    setPhotoIdDebtor(app.photo_id || '');
+    setPhotoSelfieDebtor(app.photo_selfie || '');
+    setPhotoSelfieIdDebtor(app.photo_selfie_id || '');
+    setPhotoCollateral1(app.photo_collateral_1 || '');
+    setPhotoCollateral2(app.photo_collateral_2 || '');
+    setApprovedApplicationId(app.id);
 
-  setShowInboxModal(false);
-  setIsDebtModalOpen(true);
-};
-
-  const handleRejectApplication = async (appId) => {
-    await updateApplicationStatus(appId, 'rejected');
-    setIncomingApps((prev) => prev.filter((item) => item.id !== appId));
-  };
-  // === STATE FEEDBACK JAMINAN, LELANG IMBALAN JASA & TEMPLATE WA DINAMIS ===
-  const DEFAULT_WA_TEMPLATES = {
-    approved:
-      'Halo {nama}, pengajuan pinjaman Anda sebesar {nominal} (Pokok: {pokok}, Imbalan jasa {jasa}%, tenor {tenor} bln) telah DISETUJUI.\nCek detail status & kontrak Anda di:\n{link_status}',
-    counter_offer:
-      'Halo {nama}, pengajuan pinjaman Anda sebesar {nominal} belum disepakati pada imbalan jasa {jasa}%.\nSilakan ajukan ulang penawaran imbalan jasa (Sistem Lelang) melalui link berikut:\n{link_status}',
-    principal_offer:
-      'Halo {nama}, untuk pengajuan pinjaman Anda (awal {nominal}), kami mengajukan penawaran lelang pokok pinjaman sebesar {pokok} (Imbalan jasa {jasa}%, tenor {tenor} bln).\n{alasan}\nSilakan konfirmasi atau ajukan penawaran balik melalui link berikut:\n{link_status}',
-    tenor_approval:
-      'Halo {nama}, untuk pengajuan pinjaman Anda sebesar {pokok} (Imbalan jasa {jasa}%), kami menetapkan PERSETUJUAN TENOR FINAL selama {tenor} bulan (bukan lelang / ketentuan tetap).\n{alasan}\nSilakan konfirmasi SETUJU atau TOLAK tenor tersebut melalui link berikut:\n{link_status}',
-    upgrade_collateral:
-      'Halo {nama}, untuk pengajuan pinjaman sebesar {nominal}, silakan UPGRADE kontrak Anda ke Kontrak 3 (Dengan Jaminan) agar dapat di pertimbangkan.\nKlik link berikut untuk melampirkan data/foto jaminan:\n{link_status}',
-    collateral_drop:
-      'Halo {nama}, terkait jaminan ({jaminan}) untuk pengajuan {nominal}:\n{feedback_jaminan}\n\nJika saya sedang tidak di rumah, silakan antar/drop jaminan ke alamat:\n{alamat_drop}\n\nPantau status pengajuan Anda di:\n{link_status}',
-    rejected:
-      'Halo {nama}, mohon maaf pengajuan pinjaman Anda sebesar {nominal} belum dapat kami setujui.\nAlasan: {alasan}\nDetail status: {link_status}'
-  };
-
-  const [waTemplates, setWaTemplates] = useState(() => {
-    try {
-      const saved = localStorage.getItem('wgen_wa_loan_templates');
-      return saved ? { ...DEFAULT_WA_TEMPLATES, ...JSON.parse(saved) } : DEFAULT_WA_TEMPLATES;
-    } catch {
-      return DEFAULT_WA_TEMPLATES;
-    }
-  });
-
-  const [dropAddressDefault, setDropAddressDefault] = useState(() => {
-    return localStorage.getItem('wgen_collateral_drop_address') || 'Alamat Kreditur (isi alamat rumah / titip penerima di sini)';
-  });
-
-  // Modal Aksi Kreditur (Lelang Jasa / Feedback Jaminan / Drop Jaminan / Edit WA)
- const [actionModal, setActionModal] = useState({
-    open: false,
-    type: 'collateral_drop', // 'approved' | 'counter_offer' | 'principal_offer' | 'tenor_approval' | 'upgrade_collateral' | 'collateral_drop' | 'rejected'
-    app: null,
-    offeredPrincipal: '',
-    offeredTenor: '1',
-    reasonText: '',
-    collateralNote: '',
-    dropAddress: '',
-    collateralReceived: false,
-    waMessage: ''
-  });
-
-  // Helper render template WA dengan variabel dinamis
-  const buildWaMessage = (templateKey, app, extra = {}) => {
-    const rawTpl = waTemplates[templateKey] || '';
-    const linkStatus = `${PUBLIC_WEB_ORIGIN}/apply?ticket=${app.id}`;
-    const currCode = app.currency || managerCurrency || 'IDR';
-    const basePrincipal = Number(app.requested_amount || 0);
-    const activePrincipal =
-      extra.offeredPrincipal !== undefined && extra.offeredPrincipal !== ''
-        ? Number(extra.offeredPrincipal) || basePrincipal
-        : Number(app.counter_principal_amount || basePrincipal);
-
-    const activeTenor =
-      extra.offeredTenor !== undefined && extra.offeredTenor !== ''
-        ? Number(extra.offeredTenor) || Number(app.tenor_months || 1)
-        : Number(app.approved_tenor_months || app.tenor_months || 1);
-
-    const nominalStr = `${currCode} ${basePrincipal.toLocaleString('id-ID')}`;
-    const pokokStr = `${currCode} ${activePrincipal.toLocaleString('id-ID')}`;
-
-    return rawTpl
-      .replace(/\{nama\}/g, app.borrower_name || '')
-      .replace(/\{nominal\}/g, nominalStr)
-      .replace(/\{pokok\}/g, pokokStr)
-      .replace(/\{jasa\}/g, String(app.reward_percent ?? 20))
-      .replace(/\{tenor\}/g, String(activeTenor))
-      .replace(/\{jaminan\}/g, app.collateral_desc || 'Tanpa Jaminan')
-      .replace(/\{alasan\}/g, extra.reasonText ?? app.rejection_reason ?? '-')
-      .replace(/\{feedback_jaminan\}/g, extra.collateralNote ?? app.collateral_feedback ?? '-')
-      .replace(/\{alamat_drop\}/g, extra.dropAddress ?? dropAddressDefault)
-      .replace(/\{link_status\}/g, linkStatus);
-  };
-
-  // Buka Modal Aksi
-  const openActionModal = (type, app) => {
-    const defaultPrincipal = String(app.counter_principal_amount || app.requested_amount || '');
-    const defaultTenor = String(app.approved_tenor_months || app.tenor_months || 1);
-
-    const defaultReason =
-      type === 'counter_offer'
-        ? `Imbalan jasa (${app.reward_percent ?? 20}%) belum sesuai kesepakatan. Silakan ajukan penawaran imbalan jasa ulang.`
-        : type === 'principal_offer'
-        ? `Penyesuaian nominal pokok pinjaman menjadi ${app.currency || managerCurrency || 'IDR'} ${Number(defaultPrincipal || 0).toLocaleString('id-ID')}.`
-        : type === 'tenor_approval'
-        ? `Persetujuan tenor final ditetapkan menjadi ${defaultTenor} bulan (ketentuan tetap / non-lelang). Silakan konfirmasi setuju atau tolak.`
-        : type === 'upgrade_collateral'
-        ? 'Pengajuan tanpa jaminan belum dapat disetujui untuk nominal ini. Silakan upgrade ke Kontrak 3 dengan melampirkan jaminan.'
-        : type === 'rejected'
-        ? 'Persyaratan pengajuan belum memenuhi kriteria.'
-        : '';
-
-    const defaultCollateralNote =
-      app.collateral_feedback ||
-      'Mohon serahkan/antarkan unit jaminan beserta kelengkapannya untuk pengecekan fisik.';
-
-    const initialMsg = buildWaMessage(type, app, {
-      offeredPrincipal: defaultPrincipal,
-      offeredTenor: defaultTenor,
-      reasonText: defaultReason,
-      collateralNote: defaultCollateralNote,
-      dropAddress: dropAddressDefault
-    });
-
-    setActionModal({
-      open: true,
-      type,
-      app,
-      offeredPrincipal: defaultPrincipal,
-      offeredTenor: defaultTenor,
-      reasonText: defaultReason,
-      collateralNote: defaultCollateralNote,
-      dropAddress: dropAddressDefault,
-      collateralReceived: false,
-      waMessage: initialMsg
-    });
-  };
-      
-
-  // Simpan perubahan database + (opsional) buka WhatsApp
-  // Simpan perubahan database + (opsional) buka WhatsApp
-  const handleConfirmActionModal = async (sendToWa = false) => {
-    const {
-      type,
-      app,
-      offeredPrincipal,
-      offeredTenor,
-      reasonText,
-      collateralNote,
-      dropAddress,
-      collateralReceived,
-      waMessage
-    } = actionModal;
-    if (!app) return;
-
-    try {
-      if (type === 'principal_offer') {
-        const limits = getAppContractLimits(app);
-        const rawDigits = String(offeredPrincipal || '').replace(/\D/g, '');
-        const cleanPrincipal = Number(clampContractAmount(rawDigits, limits)) || 0;
-
-        if (cleanPrincipal < limits.minVal || cleanPrincipal > limits.maxVal) {
-          showToast(
-            `Nominal harus sesuai ${limits.contractLabel}: ${limits.cleanCurr} ${limits.minVal.toLocaleString('id-ID')} – ${limits.maxVal.toLocaleString('id-ID')}`,
-            'error'
-          );
-          return;
-        }
-
-        const formattedNote = `[LELANG POKOK: ${limits.cleanCurr} ${cleanPrincipal.toLocaleString('id-ID')}] ${reasonText || ''}`.trim();
-
-        await updateApplicationFeedback({
-          applicationId: app.id,
-          status: 'counter_offer',
-          rejectionReason: formattedNote,
-          counterPrincipalAmount: cleanPrincipal
-        });
-
-        setIncomingApps((prev) =>
-          prev.map((item) =>
-            item.id === app.id
-              ? {
-                  ...item,
-                  status: 'counter_offer',
-                  rejection_reason: formattedNote,
-                  counter_principal_amount: cleanPrincipal
-                }
-              : item
-          )
-        );
-      } else if (type === 'counter_offer' || type === 'upgrade_collateral') {
-        await updateApplicationFeedback({
-          applicationId: app.id,
-          status: 'counter_offer',
-          rejectionReason: reasonText
-        });
-        setIncomingApps((prev) =>
-          prev.map((item) =>
-            item.id === app.id
-              ? { ...item, status: 'counter_offer', rejection_reason: reasonText }
-              : item
-          )
-        );
-      } else if (type === 'tenor_approval') {
-        const cleanTenor = Math.min(12, Math.max(1, parseInt(offeredTenor, 10) || 1));
-        const formattedNote = `[PERSETUJUAN TENOR FINAL: ${cleanTenor} BLN] ${reasonText || ''}`.trim();
-
-        await updateApplicationFeedback({
-          applicationId: app.id,
-          status: 'tenor_offer',
-          rejectionReason: formattedNote,
-          approvedTenorMonths: cleanTenor
-        });
-
-        setIncomingApps((prev) =>
-          prev.map((item) =>
-            item.id === app.id
-              ? {
-                  ...item,
-                  status: 'tenor_offer',
-                  rejection_reason: formattedNote,
-                  approved_tenor_months: cleanTenor,
-                  tenor_months: cleanTenor
-                }
-              : item
-          )
-        );
-      } else if (type === 'rejected') {
-        await updateApplicationFeedback({
-          applicationId: app.id,
-          status: 'rejected',
-          rejectionReason: reasonText
-        });
-        setIncomingApps((prev) => prev.filter((item) => item.id !== app.id));
-      } else if (type === 'collateral_drop') {
-        const finalCollateralFeedback = collateralReceived
-          ? `[✓ BARANG JAMINAN DITERIMA] ${collateralNote}`
-          : `[INSTRUKSI SERAH TERIMA / DROP JAMINAN] ${collateralNote}\nAlamat Drop-Off: ${dropAddress}`;
-
-        await updateApplicationFeedback({
-          applicationId: app.id,
-          status: app.status,
-          rejectionReason: app.rejection_reason || null,
-          collateralFeedback: finalCollateralFeedback
-        });
-
-        localStorage.setItem('wgen_collateral_drop_address', dropAddress);
-        setDropAddressDefault(dropAddress);
-
-        setIncomingApps((prev) =>
-          prev.map((item) =>
-            item.id === app.id
-              ? { ...item, collateral_feedback: finalCollateralFeedback }
-              : item
-          )
-        );
-      }
-
-      if (sendToWa && app.borrower_phone) {
-        const phone = formatWaPhone(app.borrower_phone);
-        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(waMessage)}`, '_blank');
-      }
-
-      setActionModal((prev) => ({ ...prev, open: false }));
-    } catch (err) {
-      alert('Gagal menyimpan pembaruan status: ' + err.message);
-    }
-  };
-  // Simpan teks pesan saat ini menjadi Template Default permanen
-  const handleSaveCurrentAsTemplate = () => {
-    const { type, waMessage } = actionModal;
-    const updated = { ...waTemplates, [type]: waMessage };
-    setWaTemplates(updated);
-    localStorage.setItem('wgen_wa_loan_templates', JSON.stringify(updated));
-    showToast('Template pesan WhatsApp berhasil disimpan sebagai default!', 'success');
+    setIsDebtModalOpen(true);
   };
 
   const addMonthsSafely = (dateStr, monthsToAdd) => {
@@ -2275,14 +1750,12 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
     const cleaned = address.trim();
     if (!cleaned) return '';
 
-    // 1. Cek pola eksplisit "Kota ..." atau "Kabupaten / Kab. ..."
     const explicitMatch = cleaned.match(/\b(?:Kota|Kabupaten|Kab\.?)\s+([A-Za-z\s]+?)(?=,|$|\.|Kode\s*Pos|\d)/i);
     if (explicitMatch && explicitMatch[1]) {
       const prefix = /kota/i.test(explicitMatch[0]) ? 'Kota ' : 'Kab. ';
       return `${prefix}${explicitMatch[1].trim()}`;
     }
 
-    // 2. Cek nama kota administratif umum
     const knownCityMatch = cleaned.match(
       /\b(Jakarta\s+(?:Pusat|Timur|Barat|Selatan|Utara)|Jakarta|Bogor|Depok|Tangerang\s+Selatan|Tangerang|Bekasi|Bandung|Semarang|Surabaya|Yogyakarta|Medan|Palembang|Makassar|Denpasar|Malang|Solo|Surakarta|Batam|Pekanbaru|Balikpapan|Samarinda|Banjarmasin|Pontianak|Manado|Cimahi|Sukabumi|Cirebon|Tasikmalaya|Serang|Cilegon|Karawang|Purwakarta|Subang|Garut|Cianjur|Sumedang|Indramayu|Majalengka|Kuningan)\b/i
     );
@@ -2293,7 +1766,6 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
         .replace(/\b\w/g, (c) => c.toUpperCase());
     }
 
-    // 3. Fallback jika dipisah koma
     const parts = cleaned.split(',').map((s) => s.trim()).filter(Boolean);
     if (parts.length >= 3) {
       return parts[parts.length - 2].replace(/\d+/g, '').trim();
@@ -2339,7 +1811,6 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
       };
     }
 
-    // Tier B (>= 11 Juta): 32,5% / 12 periode = 2,71% per 28 hari (Maks 32,5%)
     if (equivalentIdr >= 11000000) {
       const periods = Math.min(12, Math.max(1, Math.ceil(daysLate / 28)));
       const cappedPct = Math.min(Number((periods * 2.71).toFixed(2)), 32.5);
@@ -2351,7 +1822,6 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
       };
     }
 
-    // Tier A (300rb - 10,99jt) & Micro (100rb - 500rb): 5% H1-28, +2,5%/28hr (Maks 32,5%)
     const activeTierLabel = mode === 'micro' ? 'Micro' : 'Tier A';
 
     if (daysLate <= 28) {
@@ -2409,7 +1879,6 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
     const manualPct = Number(debt.lateFeePercent) || 0;
     const dCurr = debt.currency || managerCurrency;
 
-    // 1. Denda yang SUDAH sah tercatat dari transaksi pembayaran masa lalu
     const recordedLateFee = (debt.paymentHistory || []).reduce((sum, log) => {
       return sum + (Number(log.lateFeeCharged) || 0);
     }, 0);
@@ -2430,7 +1899,6 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
         const termDue = getTermDueDate(debt, currentTermIndex);
 
         if (termDue && !isNaN(termDue.getTime())) {
-          // Grace Period 1 Hari penuh setelah Due Date
           const graceDeadline = new Date(termDue);
           graceDeadline.setDate(graceDeadline.getDate() + 1);
 
@@ -2562,12 +2030,10 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
     }
   };
 
-  // Format tampilan ringkasan log pembayaran agar mudah dibaca (Term, Jatuh Tempo, Pokok + Denda)
   const formatHistoryLogSummary = (log, currencyCode, debt = null) => {
     const dSym = getCurrencySymbolDynamic(currencyCode || managerCurrency);
     const parts = [];
 
-    // 1. Keterangan Termin ke-berapa & Tanggal Jatuh Temponya (Zona Waktu Lokal, bukan UTC)
     if (log.isInitial) {
       parts.push(`${t.initialPaidNote} (${log.termCount || 0} ${t.termText})`);
     } else if (debt && debt.isInstallment && log.termIndex) {
@@ -2578,12 +2044,10 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
       parts.push(`+1 ${t.termText}`);
     }
 
-    // 2. Metode Pembayaran
     if (log.methodKey) {
       parts.push(t.methods[log.methodKey] || log.methodKey);
     }
 
-    // 3. Pecahan Nominal: Pokok + Denda (jika ada denda)
     const lateFee = Number(log.lateFeeCharged) || 0;
     const daysLate = Number(log.daysLate) || 0;
     if (lateFee > 0 || daysLate > 0) {
@@ -2596,7 +2060,7 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
   };
 
   const ensureTursoDebtsSchema = async () => {
-   const alterStatements = [
+    const alterStatements = [
       `ALTER TABLE debts ADD COLUMN lender_name TEXT DEFAULT ''`,
       `ALTER TABLE debts ADD COLUMN debtor_id_no TEXT DEFAULT ''`,
       `ALTER TABLE debts ADD COLUMN creditor_id_no TEXT DEFAULT ''`,
@@ -2651,6 +2115,7 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
       if (res.rows && res.rows.length > 0) {
         const remoteFormatted = res.rows.map(row => ({
           id: String(row.id),
+          qrApplicationId: row.qr_application_id || '',
           name: row.name,
           lenderName: row.lender_name || '',
           debtorIdNo: row.debtor_id_no || '',
@@ -2683,7 +2148,7 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
           photoCollateral1: row.photo_collateral_1 || '',
           photoCollateral2: row.photo_collateral_2 || '',
           photoEtc1: row.photo_etc1 || '',
-          photoEtc2: row.photo_etc2 || '', 
+          photoEtc2: row.photo_etc2 || '',
           isInstallment: Boolean(row.is_installment),
           installmentCount: Number(row.installment_count) || 1,
           paidInstallments: Number(row.paid_installments) || 0,
@@ -2734,7 +2199,6 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
     }
   }, [debts]);
 
-  // Helper Kompresi Gambar Umum & Gambar Cap Jari / Tanda Tangan
   const compressImageFile = (file, maxDim = 800, format = 'image/jpeg', quality = 0.72) => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -2765,7 +2229,7 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
       reader.readAsDataURL(file);
     });
   };
-  // Kompresi otomatis client-side agar total 7 foto tetap ringan (< 200 KB/foto) di Turso SQLite
+
   const compressDocPhoto = (file, maxWidth = 900, quality = 0.72) => {
     return new Promise((resolve) => {
       if (!file) return resolve('');
@@ -2801,8 +2265,6 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
     e.target.value = '';
   };
 
-
-
   const handleImageCapture = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -2832,7 +2294,6 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
     const totalInst = parseInt(installmentCount) || 1;
     const paidInst = parseInt(paidInstallments) || 0;
 
-    // Ambil data pinjaman lama jika sedang mode Edit
     const existingDebt = currentDebtId
       ? debts.find((d) => String(d.id) === String(currentDebtId))
       : null;
@@ -2889,7 +2350,6 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
       finalPaidInstallments = isInstallment ? paidInst : 0;
     }
 
-    // Pertahankan riwayat pembayaran lama saat edit (jika termin diturunkan, buang kelebihannya saja)
     let initialHistory = [];
     if (existingDebt) {
       const prevHistory = Array.isArray(existingDebt.paymentHistory) ? existingDebt.paymentHistory : [];
@@ -2900,7 +2360,6 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
         if (targetTerms === 0) {
           initialHistory = [];
         } else if (prevHistory.length > targetTerms) {
-          // Urutkan lama -> baru, ambil sejumlah targetTerms pertama, lalu kembalikan ke terbaru -> lama
           const chronological = [...prevHistory].reverse();
           initialHistory = chronological.slice(0, targetTerms).reverse();
         } else {
@@ -2926,10 +2385,12 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
     const cleanedAccountInfo = paymentMethodKey === 'cash' ? '' : paymentAccountInfo;
     const selectedCategory = category || categories[0] || 'Pribadi';
     const nowIso = new Date().toISOString();
-      if (cleanedAccountInfo) {
-        localStorage.setItem('wgen_default_payment_account', cleanedAccountInfo);
-        localStorage.setItem('wgen_default_payment_method', paymentMethodKey);
-      }
+
+    if (cleanedAccountInfo) {
+      localStorage.setItem('wgen_default_payment_account', cleanedAccountInfo);
+      localStorage.setItem('wgen_default_payment_method', paymentMethodKey);
+    }
+
     const debtData = {
       id: newDebtId,
       qrApplicationId: approvedApplicationId || existingDebt?.qrApplicationId || '',
@@ -2997,15 +2458,15 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
       await ensureTursoDebtsSchema();
       await turso.execute({
         sql: `INSERT INTO debts (
-          id, user_id, name, lender_name, debtor_id_no, creditor_id_no, debtor_address, category, type, principal_amount, bonus_percent, bonus_type, late_fee_mode, late_fee_percent, amount, currency, 
+          id, user_id, qr_application_id, name, lender_name, debtor_id_no, creditor_id_no, debtor_address, category, type, principal_amount, bonus_percent, bonus_type, late_fee_mode, late_fee_percent, amount, currency, 
           borrower_phone, emergency_phone, collateral, collateral_desc, start_date, due_date, 
           status_key, image, creditor_fingerprint, creditor_signature, debtor_fingerprint, debtor_signature,
           photo_id_debtor, photo_selfie_debtor, photo_selfie_id_debtor, photo_collateral_1, photo_collateral_2, photo_etc1, photo_etc2,
           is_installment, installment_count, paid_installments, total_paid_amount, 
           installment_amount, payment_method_key, payment_account_info, payment_history, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET 
-          name=excluded.name, lender_name=excluded.lender_name, debtor_id_no=excluded.debtor_id_no, creditor_id_no=excluded.creditor_id_no,
+          qr_application_id=excluded.qr_application_id, name=excluded.name, lender_name=excluded.lender_name, debtor_id_no=excluded.debtor_id_no, creditor_id_no=excluded.creditor_id_no,
           debtor_address=excluded.debtor_address, category=excluded.category, type=excluded.type, principal_amount=excluded.principal_amount, bonus_percent=excluded.bonus_percent,
           bonus_type=excluded.bonus_type, late_fee_mode=excluded.late_fee_mode, late_fee_percent=excluded.late_fee_percent,
           amount=excluded.amount, currency=excluded.currency, borrower_phone=excluded.borrower_phone, 
@@ -3022,25 +2483,25 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
           installment_amount=excluded.installment_amount, payment_method_key=excluded.payment_method_key, 
           payment_account_info=excluded.payment_account_info, payment_history=excluded.payment_history, updated_at=excluded.updated_at`,
         args: [
-          newDebtId, userId, name, lenderName, debtorIdNo, creditorIdNo, debtorAddress, selectedCategory, type, principal, bonusPct, bonusType, lateFeeMode, latePct, totalAmt, debtCurrency,
+          newDebtId, userId, debtData.qrApplicationId, name, lenderName, debtorIdNo, creditorIdNo, debtorAddress, selectedCategory, type, principal, bonusPct, bonusType, lateFeeMode, latePct, totalAmt, debtCurrency,
           borrowerPhone, emergencyPhone, collateral ? 1 : 0, collateralDesc, startDate, dueDate,
           finalStatusKey, image, creditorFingerprint || '', creditorSignature || '', debtorFingerprint || '', debtorSignature || '',
           photoIdDebtor || '', photoSelfieDebtor || '', photoSelfieIdDebtor || '', photoCollateral1 || '', photoCollateral2 || '', photoEtc1 || '', photoEtc2 || '',
-          isInstallment ? 1 : 0, totalInst, debtData.paidInstallments, 
+          isInstallment ? 1 : 0, totalInst, debtData.paidInstallments,
           finalPaidAmount, debtData.installmentAmount, paymentMethodKey, cleanedAccountInfo,
           JSON.stringify(initialHistory), nowIso, nowIso
         ]
       });
 
       if (approvedApplicationId) {
-        await updateApplicationStatus(approvedApplicationId, 'approved');
-        setIncomingApps((prev) => prev.filter((item) => item.id !== approvedApplicationId));
+        if (markQrAppApprovedRef.current) {
+          await markQrAppApprovedRef.current(approvedApplicationId);
+        }
         setApprovedApplicationId(null);
       }
     } catch (err) {
       console.warn("Offline Save: Tersimpan lokal, akan disinkron saat online", err.message);
     }
-      
   };
 
   const resetDebtForm = () => {
@@ -3076,10 +2537,7 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
     setPhotoCollateral1('');
     setPhotoCollateral2('');
     setPhotoEtc1('');
-    setPhotoEtc2(''); 
-
-
-
+    setPhotoEtc2('');
     setIsInstallment(false);
     setInstallmentCount('3');
     setPaidInstallments('0');
@@ -3154,7 +2612,7 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
     const remainingWithLate = Math.max(lateInfo.effectiveTotal - (debt.totalPaidAmount || 0), 0);
 
     const baseInstAmt = debt.installmentAmount || (debt.amount / (debt.installmentCount || 1));
-    const instAmt = debt.isInstallment 
+    const instAmt = debt.isInstallment
       ? Math.min(baseInstAmt + (lateInfo.pendingLateFee || 0), remainingWithLate)
       : remainingWithLate;
 
@@ -3250,7 +2708,7 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
     setSelectedDebtForPay(null);
   };
 
- const handleUndoLastPayment = async (debt) => {
+  const handleUndoLastPayment = async (debt) => {
     const history = Array.isArray(debt.paymentHistory) ? debt.paymentHistory : [];
     if (history.length === 0) return;
 
@@ -3304,107 +2762,95 @@ const handleSaveQrPaymentAccount = async (accValue = qrPaymentAccount, methodVal
       console.warn("Offline Undo: Tersimpan lokal, akan disinkron saat online", err.message);
     }
   };
-  
+
   // Konversi & format batas nominal Tier A & Tier B secara real-time mengikuti mata uang Debt Manager
-const formatTierThreshold = (idrAmount, targetCurr) => {
-  const cleanCurr = (targetCurr || 'IDR').toUpperCase();
-  const sym = getCurrencySymbolDynamic(cleanCurr);
+  const formatTierThreshold = (idrAmount, targetCurr) => {
+    const cleanCurr = (targetCurr || 'IDR').toUpperCase();
+    const sym = getCurrencySymbolDynamic(cleanCurr);
 
-  const converted = cleanCurr === 'IDR'
-    ? idrAmount
-    : convertCurrencyDynamic(idrAmount, 'IDR', cleanCurr, liveRates);
+    const converted = cleanCurr === 'IDR'
+      ? idrAmount
+      : convertCurrencyDynamic(idrAmount, 'IDR', cleanCurr, liveRates);
 
-  const safeNum = Number.isFinite(converted) ? converted : idrAmount;
+    const safeNum = Number.isFinite(converted) ? converted : idrAmount;
 
-  // Pembulatan rapi per mata uang:
-  // - IDR / JPY / KRW: bilangan bulat
-  // - Mata uang desimal (USD, EUR, SGD, MYR, SAR, dll.): bulatkan ke satuan atau 2 desimal jika < 10
-  let formattedVal = '';
-  if (['IDR', 'JPY', 'KRW', 'VND'].includes(cleanCurr)) {
-    formattedVal = Math.round(safeNum).toLocaleString('en-US').replace(/,/g, '.');
-  } else if (Math.abs(safeNum) < 10) {
-    formattedVal = Number(safeNum.toFixed(2)).toLocaleString('en-US');
-  } else {
-    formattedVal = Math.round(safeNum).toLocaleString('en-US');
-  }
-
-  return `${sym} ${formattedVal}`;
-};
-
-const getDynamicTierTexts = (targetCurr) => {
-  const cleanCurr = (targetCurr || 'IDR').toUpperCase();
-
-  // Batas dasar dalam IDR:
-  // Tier A: 300.000 s.d. 10.999.999
-  // Tier B: 11.000.000 s.d. 50.000.000
-  const aMin = formatTierThreshold(300000, cleanCurr);
-  const aMax = formatTierThreshold(10999999, cleanCurr);
-  const bMin = formatTierThreshold(11000000, cleanCurr);
-  const bMax = formatTierThreshold(50000000, cleanCurr);
-
-  const dynamicMap = {
-    id: {
-      tierATitle: `A. Pinjaman ${aMin} – ${aMax} (Tier A) [${cleanCurr}]`,
-      tierA1: 'Keterlambatan hari ke-1 s.d. ke-28 (setelah grace period): denda tetap sebesar 5% dari pokok pinjaman.',
-      tierA2: 'Mulai hari ke-29: tambahan denda sebesar 2,5% untuk setiap periode 28 hari berikutnya.',
-      tierA3: 'Akumulasi denda maksimal adalah 32,5% dari pokok pinjaman.',
-      tierBTitle: `B. Pinjaman ${bMin} – ${bMax} (Tier B) [${cleanCurr}]`,
-      tierB1: 'Denda dihitung sebesar 2,71% dari pokok pinjaman untuk setiap periode 28 hari keterlambatan.',
-      tierB2: 'Perhitungan mengacu pada 32,5% dibagi maksimal 12 periode.',
-      tierB3: 'Akumulasi denda maksimal adalah 32,5% dari pokok pinjaman.'
-    },
-    jp: {
-      tierATitle: `A. 元本 ${aMin} 〜 ${aMax} 相当（区分A・${cleanCurr}）`,
-      tierA1: '延滞1日目〜28日目（猶予期間後）：貸付元本の5%を固定延滞金とする。',
-      tierA2: '延滞29日目以降：28日経過するごとに貸付元本の2.5%を加算する。',
-      tierA3: '延滞損害金の累積上限は貸付元本の32.5%とする。',
-      tierBTitle: `B. 元本 ${bMin} 〜 ${bMax} 相当（区分B・${cleanCurr}）`,
-      tierB1: '延滞28日ごとに貸付元本の2.71%を延滞損害金として算出する。',
-      tierB2: '上記は年上限32.5%を12期間で按分した基準に基づく。',
-      tierB3: '延滞損害金の累積上限は貸付元本の32.5%とする。'
-    },
-    en: {
-      tierATitle: `A. Tier A Loans (${aMin} – ${aMax} • ${cleanCurr})`,
-      tierA1: 'Days 1 to 28 overdue (after grace period): flat penalty of 5% of initial principal.',
-      tierA2: 'From Day 29 onward: additional 2.5% penalty for every subsequent 28-day period.',
-      tierA3: 'Maximum cumulative penalty is capped at 32.5% of the initial principal.',
-      tierBTitle: `B. Tier B Loans (${bMin} – ${bMax} • ${cleanCurr})`,
-      tierB1: 'Penalty of 2.71% of initial principal for every 28-day overdue period.',
-      tierB2: 'Calculated as 32.5% divided across a maximum of 12 periods.',
-      tierB3: 'Maximum cumulative penalty is capped at 32.5% of the initial principal.'
-    },
-    ar: {
-      tierATitle: `أ. القروض من ${aMin} إلى ${aMax} (الفئة أ • ${cleanCurr})`,
-      tierA1: 'التأخير من اليوم 1 إلى 28 (بعد فترة السماح): غرامة ثابتة 5% من أصل القرض.',
-      tierA2: 'ابتداءً من اليوم 29: غرامة إضافية 2.5% عن كل فترة 28 يوماً تالية.',
-      tierA3: 'الحد الأقصى لتراكم الغرامة هو 32.5% من أصل القرض.',
-      tierBTitle: `ب. القروض من ${bMin} إلى ${bMax} (الفئة ب • ${cleanCurr})`,
-      tierB1: 'تُحسب الغرامة بنسبة 2.71% من أصل القرض عن كل فترة تأخير مدتها 28 يوماً.',
-      tierB2: 'يستند الحساب إلى 32.5% مقسومة على 12 فترة كحد أقصى.',
-      tierB3: 'الحد الأقصى لتراكم الغرامة هو 32.5% من أصل القرض.'
-    },
-    cn: {
-      tierATitle: `A. ${aMin} – ${aMax} 档（A档 • ${cleanCurr}）`,
-      tierA1: '宽限期后逾期第 1 至 28 天：固定收取初始本金 5% 的滞纳金。',
-      tierA2: '自逾期第 29 天起：每满 28 天追加收取初始本金 2.5% 的滞纳金。',
-      tierA3: '累计滞纳金最高不超过初始借款本金的 32.5%。',
-      tierBTitle: `B. ${bMin} – ${bMax} 档（B档 • ${cleanCurr}）`,
-      tierB1: '每逾期 28 天按初始借款本金的 2.71% 计算滞纳金。',
-      tierB2: '按年上限 32.5% 均分为 12 个周期计算。',
-      tierB3: '累计滞纳金最高不超过初始借款本金的 32.5%。'
+    let formattedVal = '';
+    if (['IDR', 'JPY', 'KRW', 'VND'].includes(cleanCurr)) {
+      formattedVal = Math.round(safeNum).toLocaleString('en-US').replace(/,/g, '.');
+    } else if (Math.abs(safeNum) < 10) {
+      formattedVal = Number(safeNum.toFixed(2)).toLocaleString('en-US');
+    } else {
+      formattedVal = Math.round(safeNum).toLocaleString('en-US');
     }
+
+    return `${sym} ${formattedVal}`;
   };
 
-  return dynamicMap[language] || dynamicMap.id;
-};
+  const getDynamicTierTexts = (targetCurr) => {
+    const cleanCurr = (targetCurr || 'IDR').toUpperCase();
 
+    const aMin = formatTierThreshold(300000, cleanCurr);
+    const aMax = formatTierThreshold(10999999, cleanCurr);
+    const bMin = formatTierThreshold(11000000, cleanCurr);
+    const bMax = formatTierThreshold(50000000, cleanCurr);
 
+    const dynamicMap = {
+      id: {
+        tierATitle: `A. Pinjaman ${aMin} – ${aMax} (Tier A) [${cleanCurr}]`,
+        tierA1: 'Keterlambatan hari ke-1 s.d. ke-28 (setelah grace period): denda tetap sebesar 5% dari pokok pinjaman.',
+        tierA2: 'Mulai hari ke-29: tambahan denda sebesar 2,5% untuk setiap periode 28 hari berikutnya.',
+        tierA3: 'Akumulasi denda maksimal adalah 32,5% dari pokok pinjaman.',
+        tierBTitle: `B. Pinjaman ${bMin} – ${bMax} (Tier B) [${cleanCurr}]`,
+        tierB1: 'Denda dihitung sebesar 2,71% dari pokok pinjaman untuk setiap periode 28 hari keterlambatan.',
+        tierB2: 'Perhitungan mengacu pada 32,5% dibagi maksimal 12 periode.',
+        tierB3: 'Akumulasi denda maksimal adalah 32,5% dari pokok pinjaman.'
+      },
+      jp: {
+        tierATitle: `A. 元本 ${aMin} 〜 ${aMax} 相当（区分A・${cleanCurr}）`,
+        tierA1: '延滞1日目〜28日目（猶予期間後）：貸付元本の5%を固定延滞金とする。',
+        tierA2: '延滞29日目以降：28日経過するごとに貸付元本の2.5%を加算する。',
+        tierA3: '延滞損害金の累積上限は貸付元本の32.5%とする。',
+        tierBTitle: `B. 元本 ${bMin} 〜 ${bMax} 相当（区分B・${cleanCurr}）`,
+        tierB1: '延滞28日ごとに貸付元本の2.71%を延滞損害金として算出する。',
+        tierB2: '上記は年上限32.5%を12期間で按分した基準に基づく。',
+        tierB3: '延滞損害金の累積上限は貸付元本の32.5%とする。'
+      },
+      en: {
+        tierATitle: `A. Tier A Loans (${aMin} – ${aMax} • ${cleanCurr})`,
+        tierA1: 'Days 1 to 28 overdue (after grace period): flat penalty of 5% of initial principal.',
+        tierA2: 'From Day 29 onward: additional 2.5% penalty for every subsequent 28-day period.',
+        tierA3: 'Maximum cumulative penalty is capped at 32.5% of the initial principal.',
+        tierBTitle: `B. Tier B Loans (${bMin} – ${bMax} • ${cleanCurr})`,
+        tierB1: 'Penalty of 2.71% of initial principal for every 28-day overdue period.',
+        tierB2: 'Calculated as 32.5% divided across a maximum of 12 periods.',
+        tierB3: 'Maximum cumulative penalty is capped at 32.5% of the initial principal.'
+      },
+      ar: {
+        tierATitle: `أ. القروض من ${aMin} إلى ${aMax} (الفئة أ • ${cleanCurr})`,
+        tierA1: 'التأخير من اليوم 1 إلى 28 (بعد فترة السماح): غرامة ثابتة 5% من أصل القرض.',
+        tierA2: 'ابتداءً من اليوم 29: غرامة إضافية 2.5% عن كل فترة 28 يوماً تالية.',
+        tierA3: 'الحد الأقصى لتراكم الغرامة هو 32.5% من أصل القرض.',
+        tierBTitle: `ب. القروض من ${bMin} إلى ${bMax} (الفئة ب • ${cleanCurr})`,
+        tierB1: 'تُحسب الغرامة بنسبة 2.71% من أصل القرض عن كل فترة تأخير مدتها 28 يوماً.',
+        tierB2: 'يستند الحساب إلى 32.5% مقسومة على 12 فترة كحد أقصى.',
+        tierB3: 'الحد الأقصى لتراكم الغرامة هو 32.5% من أصل القرض.'
+      },
+      cn: {
+        tierATitle: `A. ${aMin} – ${aMax} 档（A档 • ${cleanCurr}）`,
+        tierA1: '宽限期后逾期第 1 至 28 天：固定收取初始本金 5% 的滞纳金。',
+        tierA2: '自逾期第 29 天起：每满 28 天追加收取初始本金 2.5% 的滞纳金。',
+        tierA3: '累计滞纳金最高不超过初始借款本金的 32.5%。',
+        tierBTitle: `B. ${bMin} – ${bMax} 档（B档 • ${cleanCurr}）`,
+        tierB1: '每逾期 28 天按初始借款本金的 2.71% 计算滞纳金。',
+        tierB2: '按年上限 32.5% 均分为 12 个周期计算。',
+        tierB3: '累计滞纳金最高不超过初始借款本金的 32.5%。'
+      }
+    };
 
- // Download Detail HTML - 4 Halaman A4:
-  // Halaman 1: Surat Perjanjian Pasal 1-5 (Kondisional Dengan Jaminan vs Tanpa Jaminan, Full Bahasa Sistem)
-  // Halaman 2: Detail Ringkasan & Riwayat Pembayaran
-  // Halaman 3: Simulasi Rincian Tenor 1 - 12 Bulan (Layout 2 Kolom Kiri-Kanan 1 Lembar)
-  // Halaman 4: Lembar Dokumentasi Foto 7 Slot (Verifikasi Debitur 3 Kolom 4x6 + Jaminan 2 Kolom 2R + Etc 2 Kolom 2R)
+    return dynamicMap[language] || dynamicMap.id;
+  };
+
+  // Download Detail HTML - 4 Halaman A4
   const handleDownloadHTMLDetail = (debt) => {
     const c = t.contract;
     const dCurr = debt.currency || managerCurrency;
@@ -3498,9 +2944,6 @@ const getDynamicTierTexts = (targetCurr) => {
       `;
     }).join('');
 
-    // =========================================================================
-    // KALKULASI SIMULASI TENOR 1 s.d. 12 BULAN (HALAMAN 3 - KIRI & KANAN)
-    // =========================================================================
     const penaltyMode = debt.lateFeeMode || (Number(debt.lateFeePercent) > 0 ? 'manual' : 'auto');
     const manualPct = Number(debt.lateFeePercent) || 0;
     const samplePenalty1to28 = computeTieredPenalty(principalVal, 10, dCurr, penaltyMode, manualPct);
@@ -3641,8 +3084,6 @@ const getDynamicTierTexts = (targetCurr) => {
         page-break-after: always;
         break-after: page;
       }
-
-      /* HALAMAN 1: KLAUSUL PERJANJIAN */
       .contract-title {
         text-align: center;
         font-size: 13pt;
@@ -3743,8 +3184,6 @@ const getDynamicTierTexts = (targetCurr) => {
       .tier-card li {
         font-weight: 400;
       }
-
-      /* TANDA TANGAN SEJAJAR VERTIKAL */
       .contract-sign-row {
         display: flex;
         justify-content: space-between;
@@ -3832,8 +3271,6 @@ const getDynamicTierTexts = (targetCurr) => {
         color: #000000 !important;
         word-break: break-word;
       }
-
-      /* HALAMAN 2: DETAIL & RIWAYAT */
       .doc-header {
         color: #000000 !important;
         font-size: 12.5pt;
@@ -4012,8 +3449,6 @@ const getDynamicTierTexts = (targetCurr) => {
         padding-top: 5px;
         margin: 0;
       }
-
-      /* HALAMAN 3: SIMULASI TENOR 1 - 12 BULAN */
       .stamp-audit-box {
         border: 1px solid #cbd5e1;
         background: #f8fafc !important;
@@ -4090,8 +3525,6 @@ const getDynamicTierTexts = (targetCurr) => {
         color: #334155 !important;
         line-height: 1.2;
       }
-
-      /* HALAMAN 4: LEMBAR KHUSUS 7 FOTO BUKTI (4x6 VERIFIKASI DEBITUR + 2R JAMINAN & ETC) */
       .photo-sec-title {
         font-size: 7.8pt;
         font-weight: 800;
@@ -4193,7 +3626,6 @@ const getDynamicTierTexts = (targetCurr) => {
         color: #94a3b8 !important;
         margin-top: 2px;
       }
-
       @media print {
         html, body {
           width: 100%;
@@ -4215,7 +3647,7 @@ const getDynamicTierTexts = (targetCurr) => {
     </head>
     <body>
 
-      <!-- ==================== HALAMAN 1: SURAT PERJANJIAN PINJAMAN PRIBADI (KONDISIONAL JAMINAN) ==================== -->
+      <!-- ==================== HALAMAN 1: SURAT PERJANJIAN PINJAMAN PRIBADI ==================== -->
       <div class="page-sheet page-break" dir="${isRtl ? 'rtl' : 'ltr'}">
         <h1 class="contract-title">${contractDocTitle}</h1>
         <p class="contract-intro">
@@ -4286,7 +3718,6 @@ const getDynamicTierTexts = (targetCurr) => {
           </p>
         </div>
 
-        <!-- PASAL 3 KONDISIONAL: DENGAN JAMINAN VS TANPA JAMINAN -->
         <div class="clause-section">
           <div class="clause-title">${hasCollateralFlag ? c.pasal3TitleWith : c.pasal3TitleWithout}</div>
           ${hasCollateralFlag ? `
@@ -4305,7 +3736,6 @@ const getDynamicTierTexts = (targetCurr) => {
           `}
         </div>
 
-        <!-- PASAL 4 KONDISIONAL: PENYELESAIAN JAMINAN VS PENYELESAIAN TANPA JAMINAN -->
         <div class="clause-section">
           <div class="clause-title">${hasCollateralFlag ? c.pasal4TitleWith : c.pasal4TitleWithout}</div>
           ${hasCollateralFlag ? `
@@ -4516,14 +3946,13 @@ const getDynamicTierTexts = (targetCurr) => {
         </div>
       </div>
 
-      <!-- ==================== HALAMAN 4: LEMBAR KHUSUS 7 FOTO BUKTI (4x6 VERIFIKASI DEBITUR + 2R JAMINAN & ETC) ==================== -->
+      <!-- ==================== HALAMAN 4: LEMBAR KHUSUS 7 FOTO BUKTI ==================== -->
       <div class="page-sheet" dir="${isRtl ? 'rtl' : 'ltr'}">
         <div class="doc-header" style="margin-bottom: 7px;">
           <span>${c.page4Header}</span>
           <span class="badge">${c.page4SubBadge}</span>
         </div>
 
-        <!-- BARIS 1: VERIFIKASI IDENTITAS DEBITUR 3 KOLOM SEJAJAR DI ATAS (UKURAN PAS FOTO 4x6) -->
         <div class="photo-sec-title">${c.page4Sec1Title}</div>
         <div class="photo-grid-3-id">
           <div class="photo-card-4x6">
@@ -4560,7 +3989,6 @@ const getDynamicTierTexts = (targetCurr) => {
           </div>
         </div>
 
-        <!-- BARIS 2: JAMINAN / PENYERAHAN 2 KOLOM SEJAJAR DI TENGAH (UKURAN FOTO 2R) -->
         <div class="photo-sec-title">${c.page4Sec2Title}</div>
         <div class="photo-grid-2-2r">
           <div class="photo-card-2r">
@@ -4586,7 +4014,6 @@ const getDynamicTierTexts = (targetCurr) => {
           </div>
         </div>
 
-        <!-- BARIS 3: ETC / PENDUKUNG 2 KOLOM SEJAJAR DI BAWAH (UKURAN FOTO 2R) -->
         <div class="photo-sec-title">${c.page4Sec3Title}</div>
         <div class="photo-grid-2-2r" style="margin-bottom: 6px;">
           <div class="photo-card-2r">
@@ -4651,7 +4078,7 @@ const getDynamicTierTexts = (targetCurr) => {
   const filteredDebts = debts.filter(d => {
     const matchesCategory = selectedCategoryFilter === 'ALL' || d.category === selectedCategoryFilter;
     const q = searchQuery.toLowerCase();
-    const matchesSearch = d.name.toLowerCase().includes(q) || 
+    const matchesSearch = d.name.toLowerCase().includes(q) ||
                           (d.lenderName && d.lenderName.toLowerCase().includes(q)) ||
                           (d.debtorAddress && d.debtorAddress.toLowerCase().includes(q)) ||
                           d.type.toLowerCase().includes(q);
@@ -4681,7 +4108,7 @@ const getDynamicTierTexts = (targetCurr) => {
         <div className="flex flex-wrap gap-2 items-center w-full md:w-auto">
           <div className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'}`}>
             <Coins className={`w-4 h-4 ${themeStyle.textAccent}`} />
-            <select 
+            <select
               value={managerCurrency}
               onChange={(e) => setManagerCurrency(e.target.value)}
               className={`bg-transparent text-sm font-bold focus:outline-none cursor-pointer ${isDarkMode ? 'text-slate-200' : 'text-slate-700'}`}>
@@ -4693,285 +4120,54 @@ const getDynamicTierTexts = (targetCurr) => {
             </select>
           </div>
 
-          <button 
+          <button
             onClick={() => setIsCategoryModalOpen(true)}
             className={`px-3.5 py-2 rounded-xl font-medium text-sm transition border flex items-center gap-1.5 ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700' : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'}`}>
             <Edit2 className={`w-4 h-4 ${themeStyle.textAccent}`} /> {t.manageCat}
           </button>
 
-          <button 
+          <button
             onClick={() => setIsTypeModalOpen(true)}
             className={`px-3.5 py-2 rounded-xl font-medium text-sm transition border flex items-center gap-1.5 ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700' : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'}`}>
             <Plus className="w-4 h-4 text-emerald-500" /> {t.loanTypes}
           </button>
 
-          <button 
+          <button
             onClick={() => { resetDebtForm(); setIsDebtModalOpen(true); }}
             className={`px-4 py-2.5 bg-gradient-to-r ${themeStyle.gradientBtn} text-white rounded-xl font-semibold shadow-lg transition flex items-center gap-2 flex-1 md:flex-none justify-center`}>
             <Plus className="w-5 h-5" /> {t.addDebt}
           </button>
-          <button
-            type="button"
-            onClick={handleOpenQrModal}
-            className="px-3.5 py-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-1.5 transition"
-          >
-            <QrCode className="w-4 h-4" />
-            <span>QR Pengajuan</span>
-          </button>
 
-          <button
-            type="button"
-            onClick={() => setShowInboxModal(true)}
-            className="relative px-3.5 py-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-400 text-xs font-bold flex items-center gap-1.5 transition"
-          >
-            <Inbox className="w-4 h-4" />
-            <span>Pengajuan Masuk</span>
-            {incomingApps.length > 0 && (
-              <span className="px-1.5 py-0.5 text-[10px] font-extrabold rounded-full bg-amber-400 text-slate-950">
-                {incomingApps.length}
-              </span>
-            )}
-          </button>
-
+          <QrLoanHub
+            managerCurrency={managerCurrency}
+            liveRates={liveRates}
+            themeStyle={themeStyle}
+            modalBg={modalBg}
+            bgInnerBox={bgInnerBox}
+            inputBg={inputBg}
+            debts={debts}
+            onApproveApplication={handleApproveApplication}
+            onVerifiedInstallmentTransfer={handleApplyVerifiedTransferToDebt}
+            onMarkApplicationApprovedRef={markQrAppApprovedRef}
+            showToast={showToast}
+          />
         </div>
       </div>
-      {/* NOTIFIKASI OTOMATIS: DEBITUR SETUJU/OKE ATAU MINTA TAMBAH NOMINAL / NAWAR BALIK */}
-      {agreedAppsNotif.length > 0 && (
-        <div className="space-y-2.5 mb-4">
-          {agreedAppsNotif.map((appItem) => {
-            const st = String(appItem.status || '').toLowerCase().trim();
-            const isAgreed = ['borrower_agreed', 'agreed', 'accepted', 'confirmed_by_borrower'].includes(st);
-            const isRequestMore = !isAgreed;
-
-            const nominalDitampilkan = Number(
-              appItem.borrower_counter_amount ||
-              appItem.counter_principal_amount ||
-              appItem.requested_amount ||
-              0
-            );
-
-            return (
-              <div
-                key={appItem.id}
-                className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 shadow-lg ${
-                  isRequestMore
-                    ? 'bg-amber-950/95 border-amber-400/80'
-                    : 'bg-emerald-950/95 border-emerald-400/80'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`w-8 h-8 rounded-full border flex items-center justify-center font-bold text-sm animate-bounce shrink-0 ${
-                      isRequestMore
-                        ? 'bg-amber-500/25 border-amber-400 text-amber-300'
-                        : 'bg-emerald-500/25 border-emerald-400 text-emerald-300'
-                    }`}
-                  >
-                    {isRequestMore ? '↑' : '✓'}
-                  </span>
-                  <div>
-                    <div className="text-xs sm:text-sm font-bold text-white">
-                      {isRequestMore
-                        ? 'Debitur Minta Tambah Nominal / Nawar Balik!'
-                        : 'Debitur Menyetujui Penawaran!'}
-                    </div>
-                    <div
-                      className={`text-[11px] ${
-                        isRequestMore ? 'text-amber-200' : 'text-emerald-200'
-                      }`}
-                    >
-                      {isRequestMore ? (
-                        <>
-                          <strong>{appItem.borrower_name}</strong> mengajukan perubahan/tambah nominal menjadi{' '}
-                          <strong>
-                            {appItem.currency} {nominalDitampilkan.toLocaleString('id-ID')}
-                          </strong>{' '}
-                          (Jasa {appItem.reward_percent ?? 20}%).
-                          {appItem.borrower_reply_note && (
-                            <span className="block italic text-amber-300/90 mt-0.5">
-                              Catatan: "{appItem.borrower_reply_note}"
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <strong>{appItem.borrower_name}</strong> klik Setuju/Oke untuk nominal{' '}
-                          <strong>
-                            {appItem.currency} {nominalDitampilkan.toLocaleString('id-ID')}
-                          </strong>{' '}
-                          (Jasa {appItem.reward_percent ?? 20}%). Siap ACC & cairkan!
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {isRequestMore && (
-                    <button
-                      type="button"
-                      onClick={() => openActionModal('principal_offer', appItem)}
-                      className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors shadow"
-                    >
-                      Tawar Balik Pokok
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => handleApproveApplication(appItem)}
-                    className={`px-3.5 py-2 rounded-lg text-slate-950 text-xs font-extrabold transition-colors shadow ${
-                      isRequestMore
-                        ? 'bg-amber-400 hover:bg-amber-300'
-                        : 'bg-emerald-500 hover:bg-emerald-400'
-                    }`}
-                  >
-                    {isRequestMore ? 'Setujui Tambahan & ACC' : 'Review & ACC Sekarang'}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-
-
-
-      {/* ===================================================================== */}
-      {/* NOTIFIKASI OTOMATIS: LAPORAN TRANSFER CICILAN MASUK DARI PEMINJAM     */}
-      {/* ===================================================================== */}
-      {pendingInstallmentReports.length > 0 && (
-        <div className="mb-4 p-3.5 rounded-xl bg-sky-950/90 border border-sky-500/80 flex flex-wrap items-center justify-between gap-3 shadow-lg">
-          <div className="flex items-center gap-3">
-            <span className="w-8 h-8 rounded-full bg-sky-500/20 border border-sky-400 text-sky-300 flex items-center justify-center font-bold text-sm animate-pulse">
-              {pendingInstallmentReports.length}
-            </span>
-            <div>
-              <div className="text-xs sm:text-sm font-bold text-white">
-                Konfirmasi Transfer Cicilan Masuk ({pendingInstallmentReports.length})
-              </div>
-              <div className="text-[11px] text-sky-200/85">
-                {pendingInstallmentReports[0].borrowerName} melapor transfer angsuran ke-
-                {pendingInstallmentReports[0].installmentNumber} (
-                {pendingInstallmentReports[0].currency}{' '}
-                {Number(pendingInstallmentReports[0].amount || 0).toLocaleString('id-ID')})
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowTransferNotifModal(true)}
-            className="px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-colors"
-          >
-            Cek Mutasi & Verifikasi
-          </button>
-        </div>
-      )}
-
-      {/* MODAL DAFTAR TRANSFER MASUK + PREVIEW FOTO STRUK + TOMBOL ACC 1-KLIK */}
-      {showTransferNotifModal && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="max-w-lg w-full max-h-[85vh] overflow-y-auto bg-[#0c2119] border border-sky-600/80 rounded-2xl p-5 space-y-4 text-emerald-50">
-            <div className="flex items-center justify-between border-b border-emerald-800/70 pb-3">
-              <div>
-                <h3 className="text-base font-bold text-white">
-                  Laporan Transfer Cicilan ({pendingInstallmentReports.length})
-                </h3>
-                <p className="text-[11px] text-emerald-200/75">
-                  Cek mutasi rekening Anda, lalu klik Konfirmasi agar saldo tiket peminjam otomatis terupdate.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowTransferNotifModal(false)}
-                className="px-2.5 py-1 rounded-lg bg-[#071510] border border-emerald-700 text-xs text-emerald-300"
-              >
-                ✕
-              </button>
-            </div>
-
-            {pendingInstallmentReports.length === 0 ? (
-              <div className="py-8 text-center text-xs text-emerald-300/80">
-                Semua laporan transfer sudah diverifikasi.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {pendingInstallmentReports.map((rep) => (
-                  <div
-                    key={rep.id}
-                    className="p-3.5 rounded-xl bg-[#071510] border border-emerald-800/80 space-y-2.5 text-xs"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="font-bold text-white text-sm">{rep.borrowerName}</div>
-                        <div className="text-[11px] text-emerald-400 font-mono">
-                          Tiket: {rep.applicationId}
-                        </div>
-                      </div>
-                      <span className="px-2.5 py-1 rounded-full bg-sky-950 border border-sky-600 text-sky-300 font-semibold text-[11px]">
-                        Angsuran ke-{rep.installmentNumber}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-[#0c2119] border border-emerald-800/60">
-                      <div>
-                        <span className="text-[11px] text-emerald-400/80 block">Nominal Transfer:</span>
-                        <span className="font-bold text-emerald-300 text-sm">
-                          {rep.currency} {Number(rep.amount || 0).toLocaleString('id-ID')}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[11px] text-emerald-400/80 block">Via / Rekening:</span>
-                        <span className="text-white font-semibold">{rep.transferMethod || '-'}</span>
-                      </div>
-                    </div>
-
-                    {rep.proofImage && (
-                      <div className="space-y-1">
-                        <div className="text-[11px] text-emerald-300">Lampiran Foto Bukti Struk:</div>
-                        <img
-                          src={rep.proofImage}
-                          alt="Bukti Transfer"
-                          className="w-full max-h-56 object-contain rounded-lg border border-emerald-800 bg-black"
-                        />
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-end gap-2 pt-1">
-                      <button
-                        type="button"
-                        disabled={verifyingReportId === rep.id}
-                        onClick={() => handleConfirmTransferFromBorrower(rep)}
-                        className="w-full py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs transition-colors"
-                      >
-                        {verifyingReportId === rep.id
-                          ? 'Memverifikasi...'
-                          : '✓ Mutasi Masuk — Konfirmasi & Update Tiket'}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Filter & Search Bar */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="relative md:col-span-2 flex items-center">
           <Search className="absolute left-3 w-5 h-5 text-slate-400" />
-          <input 
-            type="text" 
-            placeholder={t.searchPlaceholder} 
+          <input
+            type="text"
+            placeholder={t.searchPlaceholder}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className={`w-full rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none transition shadow-inner border ${inputBg}`}
           />
         </div>
         <div>
-          <select 
+          <select
             value={selectedCategoryFilter}
             onChange={(e) => setSelectedCategoryFilter(e.target.value)}
             className={`w-full rounded-xl px-4 py-3 text-sm focus:outline-none transition shadow-inner border ${inputBg}`}>
@@ -5019,7 +4215,7 @@ const getDynamicTierTexts = (targetCurr) => {
             const rewardTypeLabel = debt.bonusType === 'interest' ? t.interestText : t.bonusText;
 
             const getPayMethodIcon = (key) => {
-              switch(key) {
+              switch (key) {
                 case 'transfer': return <CreditCard className="w-3.5 h-3.5 text-blue-400" />;
                 case 'ewallet': return <Wallet className="w-3.5 h-3.5 text-purple-400" />;
                 case 'cash': return <Banknote className="w-3.5 h-3.5 text-emerald-400" />;
@@ -5027,136 +4223,136 @@ const getDynamicTierTexts = (targetCurr) => {
               }
             };
 
-           return (
-  <div
-    key={debt.id}
-    className={`border rounded-2xl p-4 sm:p-5 transition flex flex-col justify-between overflow-hidden ${bgCard}`}
-  >
-    <div className="min-w-0">
-      <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-3">
-        <div className="flex-1 min-w-0 w-full">
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`px-3 py-1 border rounded-full text-xs font-semibold uppercase tracking-wider ${themeStyle.badgeBg}`}
-            >
-              {debt.category}
-            </span>
+            return (
+              <div
+                key={debt.id}
+                className={`border rounded-2xl p-4 sm:p-5 transition flex flex-col justify-between overflow-hidden ${bgCard}`}
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-3">
+                    <div className="flex-1 min-w-0 w-full">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`px-3 py-1 border rounded-full text-xs font-semibold uppercase tracking-wider ${themeStyle.badgeBg}`}
+                        >
+                          {debt.category}
+                        </span>
 
-            {lateInfo.isLate && (
-              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-950/90 text-rose-300 border border-rose-700 flex items-center gap-1 max-w-full">
-                <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
-                <span className="truncate">
-                  {t.lateStatusBadge} ({lateInfo.daysLate} {t.daysLateText})
-                </span>
-              </span>
-            )}
+                        {lateInfo.isLate && (
+                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-950/90 text-rose-300 border border-rose-700 flex items-center gap-1 max-w-full">
+                            <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
+                            <span className="truncate">
+                              {t.lateStatusBadge} ({lateInfo.daysLate} {t.daysLateText})
+                            </span>
+                          </span>
+                        )}
 
-            <button
-              type="button"
-              onClick={() => toggleMinimize(debt.id)}
-              className={`ml-auto sm:ml-0 p-1.5 rounded-lg border transition shrink-0 ${
-                isDarkMode
-                  ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'
-                  : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'
-              }`}
-              title={isMinimized ? t.expand : t.minimize}
-              aria-label={isMinimized ? t.expand : t.minimize}
-            >
-              {isMinimized ? (
-                <ChevronDown className="w-4 h-4" />
-              ) : (
-                <ChevronUp className="w-4 h-4" />
-              )}
-            </button>
-          </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleMinimize(debt.id)}
+                          className={`ml-auto sm:ml-0 p-1.5 rounded-lg border transition shrink-0 ${
+                            isDarkMode
+                              ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'
+                              : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'
+                          }`}
+                          title={isMinimized ? t.expand : t.minimize}
+                          aria-label={isMinimized ? t.expand : t.minimize}
+                        >
+                          {isMinimized ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronUp className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
 
-          <h3
-            className={`text-lg sm:text-xl font-bold mt-2 flex items-center gap-2 min-w-0 ${
-              isDarkMode ? 'text-white' : 'text-slate-900'
-            }`}
-          >
-            <User className={`w-5 h-5 shrink-0 ${themeStyle.textAccent}`} />
-            <span className="truncate">{debt.name}</span>
-          </h3>
+                      <h3
+                        className={`text-lg sm:text-xl font-bold mt-2 flex items-center gap-2 min-w-0 ${
+                          isDarkMode ? 'text-white' : 'text-slate-900'
+                        }`}
+                      >
+                        <User className={`w-5 h-5 shrink-0 ${themeStyle.textAccent}`} />
+                        <span className="truncate">{debt.name}</span>
+                      </h3>
 
-          {debt.lenderName && (
-            <p className="text-xs font-medium text-emerald-400 flex items-center gap-1.5 mt-0.5 min-w-0">
-              <UserCheck className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">
-                {t.lenderNameLabel}:{' '}
-                <strong className={isDarkMode ? 'text-slate-200' : 'text-slate-800'}>
-                  {debt.lenderName}
-                </strong>
-              </span>
-            </p>
-          )}
+                      {debt.lenderName && (
+                        <p className="text-xs font-medium text-emerald-400 flex items-center gap-1.5 mt-0.5 min-w-0">
+                          <UserCheck className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">
+                            {t.lenderNameLabel}:{' '}
+                            <strong className={isDarkMode ? 'text-slate-200' : 'text-slate-800'}>
+                              {debt.lenderName}
+                            </strong>
+                          </span>
+                        </p>
+                      )}
 
-          {!isMinimized && (
-            <div className="flex flex-col gap-1 mt-2">
-              {debt.debtorIdNo && (
-                <span className="text-xs text-slate-400 flex items-center gap-1.5 break-all">
-                  <IdCard className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                  <span>
-                    {t.debtorIdLabel}: {debt.debtorIdNo}
-                  </span>
-                </span>
-              )}
-              {debt.debtorAddress && (
-                <span className="text-xs text-slate-400 flex items-start gap-1.5 break-words">
-                  <MapPin className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
-                  <span>{debt.debtorAddress}</span>
-                </span>
-              )}
-              {debt.borrowerPhone && (
-                <span className="text-xs text-slate-400 flex items-center gap-1.5 break-all">
-                  <Phone className={`w-3.5 h-3.5 shrink-0 ${themeStyle.textAccent}`} />
-                  <span>
-                    {t.borrowerPhone}: {debt.borrowerPhone}
-                  </span>
-                </span>
-              )}
-              {debt.emergencyPhone && (
-                <span className="text-xs text-slate-400 flex items-center gap-1.5 break-all">
-                  <Phone className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>
-                    {t.emergencyPhone}: {debt.emergencyPhone}
-                  </span>
-                </span>
-              )}
-            </div>
-          )}
-        </div>
+                      {!isMinimized && (
+                        <div className="flex flex-col gap-1 mt-2">
+                          {debt.debtorIdNo && (
+                            <span className="text-xs text-slate-400 flex items-center gap-1.5 break-all">
+                              <IdCard className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                              <span>
+                                {t.debtorIdLabel}: {debt.debtorIdNo}
+                              </span>
+                            </span>
+                          )}
+                          {debt.debtorAddress && (
+                            <span className="text-xs text-slate-400 flex items-start gap-1.5 break-words">
+                              <MapPin className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+                              <span>{debt.debtorAddress}</span>
+                            </span>
+                          )}
+                          {debt.borrowerPhone && (
+                            <span className="text-xs text-slate-400 flex items-center gap-1.5 break-all">
+                              <Phone className={`w-3.5 h-3.5 shrink-0 ${themeStyle.textAccent}`} />
+                              <span>
+                                {t.borrowerPhone}: {debt.borrowerPhone}
+                              </span>
+                            </span>
+                          )}
+                          {debt.emergencyPhone && (
+                            <span className="text-xs text-slate-400 flex items-center gap-1.5 break-all">
+                              <Phone className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              <span>
+                                {t.emergencyPhone}: {debt.emergencyPhone}
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
 
-        <div
-          className={`w-full sm:w-auto sm:max-w-[45%] text-left sm:text-right pt-2.5 sm:pt-0 border-t sm:border-t-0 shrink-0 ${
-            isDarkMode ? 'border-slate-700/70' : 'border-slate-200'
-          }`}
-        >
-          <span className="text-xs text-slate-400 block">{t.loanAmount}</span>
-          <span className="text-lg sm:text-xl font-black text-emerald-400 break-words leading-tight block">
-            {dSym} {effectiveTotalAmount.toLocaleString()}{' '}
-            <span className="text-xs text-slate-400 font-normal">({dCurr})</span>
-          </span>
+                    <div
+                      className={`w-full sm:w-auto sm:max-w-[45%] text-left sm:text-right pt-2.5 sm:pt-0 border-t sm:border-t-0 shrink-0 ${
+                        isDarkMode ? 'border-slate-700/70' : 'border-slate-200'
+                      }`}
+                    >
+                      <span className="text-xs text-slate-400 block">{t.loanAmount}</span>
+                      <span className="text-lg sm:text-xl font-black text-emerald-400 break-words leading-tight block">
+                        {dSym} {effectiveTotalAmount.toLocaleString()}{' '}
+                        <span className="text-xs text-slate-400 font-normal">({dCurr})</span>
+                      </span>
 
-          {debt.bonusPercent > 0 && (
-            <span className="text-[11px] text-amber-400 font-semibold flex items-center sm:justify-end gap-1 mt-0.5 break-words">
-              <Gift className="w-3 h-3 shrink-0" />
-              <span>
-                +{debt.bonusPercent}% {rewardTypeLabel}
-              </span>
-            </span>
-          )}
+                      {debt.bonusPercent > 0 && (
+                        <span className="text-[11px] text-amber-400 font-semibold flex items-center sm:justify-end gap-1 mt-0.5 break-words">
+                          <Gift className="w-3 h-3 shrink-0" />
+                          <span>
+                            +{debt.bonusPercent}% {rewardTypeLabel}
+                          </span>
+                        </span>
+                      )}
 
-          {lateInfo.isLate && lateInfo.lateFeeAmount > 0 && (
-            <span className="text-[11px] text-rose-400 font-bold block mt-0.5 break-words">
-              +{dSym} {lateInfo.lateFeeAmount.toLocaleString()} ({t.lateFeeAmountLabel}{' '}
-              {displayLatePercent}%)
-            </span>
-          )}
-        </div>
-      </div>
+                      {lateInfo.isLate && lateInfo.lateFeeAmount > 0 && (
+                        <span className="text-[11px] text-rose-400 font-bold block mt-0.5 break-words">
+                          +{dSym} {lateInfo.lateFeeAmount.toLocaleString()} ({t.lateFeeAmountLabel}{' '}
+                          {displayLatePercent}%)
+                        </span>
+                      )}
+                    </div>
+                  </div>
 
-      {/* BANNER PENGINGAT JATUH TEMPO OTOMATIS */}
+                  {/* BANNER PENGINGAT JATUH TEMPO OTOMATIS */}
                   {reminderInfo && (
                     <div className={`mb-3 px-3.5 py-2.5 rounded-xl border flex flex-wrap items-center justify-between gap-2 ${
                       reminderInfo.type === 'overdue'
@@ -5213,7 +4409,7 @@ const getDynamicTierTexts = (targetCurr) => {
                         <div className="mt-2">
                           <span className="text-slate-400 text-xs block">{t.payMethod}</span>
                           <span className={`font-medium flex items-center gap-1.5 mt-0.5 text-xs px-2 py-1 rounded-lg border w-fit ${isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-white border-slate-300 text-slate-700'}`}>
-                            {getPayMethodIcon(debt.paymentMethodKey)} 
+                            {getPayMethodIcon(debt.paymentMethodKey)}
                             {t.methods[debt.paymentMethodKey] || debt.paymentMethod || t.methods.transfer}
                           </span>
                           {debt.paymentAccountInfo && debt.paymentMethodKey !== 'cash' && (
@@ -5252,7 +4448,7 @@ const getDynamicTierTexts = (targetCurr) => {
                                 {dSym} {(debt.totalPaidAmount || 0).toLocaleString()} / {dSym} {effectiveTotalAmount.toLocaleString()}
                               </span>
                             </div>
-                            <button 
+                            <button
                               onClick={() => openPayModal(debt)}
                               disabled={isFullyPaid}
                               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 ${isFullyPaid ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : `${themeStyle.bgAccent} text-white shadow`}`}>
@@ -5277,14 +4473,14 @@ const getDynamicTierTexts = (targetCurr) => {
                               </span>
                               <div className="flex items-center gap-2">
                                 <span className="font-semibold text-emerald-400">+{dSym} {debt.paymentHistory[0].amount.toLocaleString()}</span>
-                               <button
-                                    type="button"
-                                    onClick={() => handleUndoLastPayment(debt)}
-                                    className="px-1.5 py-0.5 rounded bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/70 text-[10px] font-semibold transition"
-                                    title={t.undoLastPayTitle}
-                                  >
-                                    {t.undoLastPay}
-                                  </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUndoLastPayment(debt)}
+                                  className="px-1.5 py-0.5 rounded bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/70 text-[10px] font-semibold transition"
+                                  title={t.undoLastPayTitle}
+                                >
+                                  {t.undoLastPay}
+                                </button>
                               </div>
                             </div>
                           )}
@@ -5307,7 +4503,7 @@ const getDynamicTierTexts = (targetCurr) => {
                       <span>{Math.round(progressPercent)}%</span>
                     </div>
                     <div className={`w-full h-2.5 rounded-full overflow-hidden border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-200 border-slate-300'}`}>
-                      <div 
+                      <div
                         className={`h-full transition-all duration-500 ${isFullyPaid ? 'bg-emerald-500' : lateInfo.isLate ? 'bg-rose-500' : themeStyle.progressBar}`}
                         style={{ width: `${progressPercent}%` }}
                       ></div>
@@ -5317,20 +4513,20 @@ const getDynamicTierTexts = (targetCurr) => {
 
                 <div className={`flex items-center justify-between pt-3 border-t mt-2 ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
                   <div className="flex gap-2">
-                    <button 
+                    <button
                       onClick={() => handleEditDebt(debt)}
-                      className={`p-2 rounded-lg transition ${isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' : 'bg-slate-200 hover:bg-slate-300 text-slate-700'}`} 
+                      className={`p-2 rounded-lg transition ${isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' : 'bg-slate-200 hover:bg-slate-300 text-slate-700'}`}
                       title={t.edit}>
                       <Edit2 className="w-4 h-4" />
                     </button>
-                    <button 
+                    <button
                       onClick={() => handleDeleteDebt(debt.id)}
-                      className="p-2 bg-rose-950/60 hover:bg-rose-900 text-rose-300 rounded-lg transition border border-rose-900" 
+                      className="p-2 bg-rose-950/60 hover:bg-rose-900 text-rose-300 rounded-lg transition border border-rose-900"
                       title={t.delete}>
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
-                  <button 
+                  <button
                     onClick={() => handleDownloadHTMLDetail(debt)}
                     className={`px-3.5 py-2 border rounded-xl font-medium text-xs transition flex items-center gap-1.5 shadow ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700' : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'}`}>
                     <Download className={`w-4 h-4 ${themeStyle.textAccent}`} /> {t.downloadDetail}
@@ -5341,616 +4537,7 @@ const getDynamicTierTexts = (targetCurr) => {
           })
         )}
       </div>
-        {/* MODAL: QR Code Generator Pengajuan Pinjaman */}
-      {showQrModal && (
-        <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className={`border rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl ${modalBg}`}>
-            <div className="flex items-center justify-between border-b border-slate-700/60 pb-3">
-              <h3 className={`text-base font-bold flex items-center gap-2 ${themeStyle.textAccent}`}>
-                <QrCode className="w-5 h-5" /> QR Code Pengajuan Pinjaman
-              </h3>
-              <button type="button" onClick={() => setShowQrModal(false)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            {loadingQr || !qrLinkData ? (
-              <div className="py-10 text-center text-xs text-slate-400">Menyiapkan QR Code...</div>
-            ) : (
-              <>
-                <div className={`flex flex-col items-center gap-3 p-4 rounded-xl border ${bgInnerBox}`}>
-                  <div className="bg-white p-3 rounded-xl shadow">
-                    <QRCodeCanvas
-                      id="wgen-loan-qr-canvas"
-                      value={`${PUBLIC_WEB_ORIGIN}/apply?token=${qrLinkData.token}`}
-                      size={190}
-                      fgColor="#064e3b"
-                      bgColor="#ffffff"
-                      level="H"
-                      includeMargin={true}
-                    />
-                  </div>
-                  <span className="text-xs font-mono font-bold text-emerald-400">{qrLinkData.token}</span>
-                  <input
-                    type="text"
-                    readOnly
-                    value={`${PUBLIC_WEB_ORIGIN}/apply?token=${qrLinkData.token}`}
-                    onClick={(e) => e.target.select()}
-                    className={`w-full px-3 py-1.5 rounded-lg text-[11px] text-center border ${inputBg}`}
-                  />
-                </div>
-                <div className="w-full text-left space-y-1.5 pt-1">
-                        <label className="text-[11px] font-semibold text-slate-400">
-                          Rekening / E-Wallet Tujuan Pembayaran (Otomatis Tersimpan & Terisi Saat ACC):
-                        </label>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            placeholder="Contoh: BCA 1234567890 a.n Budi / Dana 0812xxx..."
-                            value={qrPaymentAccount}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setQrPaymentAccount(val);
-                              localStorage.setItem('wgen_default_payment_account', val);
-                            }}
-                            onBlur={(e) => handleSaveQrPaymentAccount(e.target.value, qrPaymentMethod)}
-                            className={`flex-1 px-3 py-1.5 rounded-lg text-xs border ${inputBg}`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleSaveQrPaymentAccount(qrPaymentAccount, qrPaymentMethod);
-                              showToast('Nomor rekening QR berhasil disimpan!', 'success');
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shrink-0"
-                          >
-                            Simpan
-                          </button>
-                        </div>
-                      </div>
-                  <div className="grid grid-cols-2 gap-2.5 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(`${PUBLIC_WEB_ORIGIN}/apply?token=${qrLinkData.token}`);
-                      setCopiedQrLink(true);
-                      setTimeout(() => setCopiedQrLink(false), 2000);
-                    }}
-                    className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold flex items-center justify-center gap-1.5"
-                  >
-                    {copiedQrLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                    <span>{copiedQrLink ? 'Tersalin!' : 'Salin Link'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDownloadQrPng}
-                    className={`py-2.5 rounded-xl bg-gradient-to-r ${themeStyle.gradientBtn} text-white font-bold flex items-center justify-center gap-1.5`}
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>Download QR</span>
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-between pt-2 border-t border-slate-700/60 text-xs">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const nextActive = Number(qrLinkData.is_active) !== 1;
-                      await updateLenderQrSettings(qrLinkData.token, { isActive: nextActive });
-                      setQrLinkData({ ...qrLinkData, is_active: nextActive ? 1 : 0 });
-                    }}
-                    className="text-emerald-400 underline"
-                  >
-                    {Number(qrLinkData.is_active) === 1 ? 'Nonaktifkan Sementara' : 'Aktifkan Kembali'}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const uid = auth?.currentUser?.uid || localStorage.getItem('wgen_last_uid');
-                      const fresh = await regenerateLenderQrLink({
-                        lenderUid: uid,
-                        lenderName: qrLinkData.lender_name,
-                        defaultCurrency: qrLinkData.default_currency,
-                        isMicro: Number(qrLinkData.is_micro) === 1
-                      });
-                      setQrLinkData(fresh);
-                    }}
-                    className="text-amber-400 underline"
-                  >
-                    Buat Token Baru
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: Daftar Pengajuan Pinjaman Masuk */}
-      {showInboxModal && (
-        <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className={`border rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-5 space-y-4 shadow-2xl ${modalBg}`}>
-            <div className="flex items-center justify-between border-b border-slate-700/60 pb-3">
-              <h3 className={`text-base font-bold flex items-center gap-2 ${themeStyle.textAccent}`}>
-                <Inbox className="w-5 h-5" /> Pengajuan Masuk ({incomingApps.length})
-              </h3>
-              <button type="button" onClick={() => setShowInboxModal(false)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {incomingApps.length === 0 ? (
-              <div className="py-10 text-center text-xs text-slate-400">
-                Belum ada pengajuan baru yang menunggu persetujuan.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {incomingApps.map((app) => {
-                  const hasCounterPrincipal =
-                    app.counter_principal_amount !== undefined &&
-                    app.counter_principal_amount !== null &&
-                    Number(app.counter_principal_amount) > 0;
-                  
-                   const statusLower = String(app.status || '').toLowerCase();
-                   const isBorrowerAgreed = ['borrower_agreed', 'agreed', 'accepted', 'confirmed_by_borrower'].includes(statusLower);
-                   const isBorrowerRequestMore = [
-                    'borrower_counter',
-                    'borrower_counter_offer',
-                    'additional_requested',
-                    'topup_requested',
-                    'negotiating'
-                  ].includes(statusLower) || Boolean(app.borrower_counter_amount || app.borrower_reply_note);
-                  return (
-                    <div key={app.id} className={`p-4 rounded-xl border space-y-2.5 text-xs ${bgInnerBox}`}>
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-sm">
-                            {app.borrower_name && String(app.borrower_name).trim().toLowerCase() !== ''
-                              ? app.borrower_name
-                              : 'Peminjam (Tanpa Nama)'}
-                          </span>
-                          {app.status === 'counter_offer' && (
-                            <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-semibold">
-                              Lelang Jasa • Tawaran Terkini: {app.reward_percent || 0}%
-                            </span>
-                          )}
-                          {hasCounterPrincipal && (
-                            <span className="px-2 py-0.5 rounded bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-[10px] font-semibold">
-                              Lelang Pokok: {app.currency} {Number(app.counter_principal_amount).toLocaleString()}
-                            </span>
-                          )}
-                        </div>
-                        <span className="font-mono font-bold text-emerald-400 text-sm">
-                          {app.currency} {Number(app.requested_amount || 0).toLocaleString()}
-                        </span>
-                      </div>
-                      {app.status === 'tenor_offer' && (
-                        <span className="px-2 py-0.5 rounded bg-teal-500/20 border border-teal-500/40 text-teal-300 text-[10px] font-semibold">
-                          Persetujuan Tenor Final: {app.approved_tenor_months || app.tenor_months} Bln (Menunggu Konfirmasi)
-                        </span>
-                      )}
-
-                      {isBorrowerAgreed && (
-                        <span className="px-2 py-0.5 rounded bg-emerald-500/25 border border-emerald-400/60 text-emerald-300 text-[10px] font-bold">
-                          ✓ Debitur Setuju / Oke
-                        </span>
-                      )}
-
-                      {isBorrowerRequestMore && (
-                        <span className="px-2 py-0.5 rounded bg-amber-500/25 border border-amber-400/60 text-amber-300 text-[10px] font-bold">
-                          ↑ Minta Tambah Nominal
-                          {app.borrower_counter_amount
-                            ? `: ${app.currency} ${Number(app.borrower_counter_amount).toLocaleString('id-ID')}`
-                            : ''}
-                        </span>
-                      )}
-
-                      <div className="text-slate-400 space-y-1">
-                        <div>
-                          HP: <span className="text-slate-200">{app.borrower_phone}</span> • Tenor:{' '}
-                          <span className="text-slate-200">{app.tenor_months} bln</span> (
-                          {Number(app.is_installment) === 1 ? 'Cicilan' : 'Sekali Bayar'}) • Imbalan Jasa:{' '}
-                          <span className="text-emerald-300 font-semibold">{app.reward_percent || 20}%</span>
-                        </div>
-                        <div>
-                          Jaminan:{' '}
-                          <span className="text-slate-200 font-medium">
-                            {Number(app.has_collateral) === 1 ? app.collateral_desc || 'Ada' : 'Tanpa Jaminan'}
-                          </span>
-                        </div>
-                        {app.collateral_feedback && (
-                          <div className="p-2 rounded bg-emerald-950/50 border border-emerald-700/50 text-emerald-200 text-[11px]">
-                            <strong>Status Jaminan:</strong> {app.collateral_feedback}
-                          </div>
-                        )}
-                        {app.notes && <div className="text-slate-300">Catatan: {app.notes}</div>}
-                      </div>
-                         {app.borrower_reply_note && (
-                              <div className="p-2 rounded bg-amber-950/50 border border-amber-700/50 text-amber-200 text-[11px]">
-                                <strong>Permintaan / Balasan Debitur:</strong> {app.borrower_reply_note}
-                              </div>
-                           )}
-
-                      {/* Tombol Aksi Lengkap */}
-                      <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-700/50">
-                        {/* 1. Feedback & Drop Jaminan (Jika sudah ada jaminan) OR Minta Upgrade (Jika tanpa jaminan) */}
-                        {Number(app.has_collateral) === 1 ? (
-                          <button
-                            type="button"
-                            onClick={() => openActionModal('collateral_drop', app)}
-                            className="px-2.5 py-1.5 rounded-lg bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/40 text-sky-300 font-semibold"
-                          >
-                            Jaminan & Alamat Drop
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => openActionModal('upgrade_collateral', app)}
-                            className="px-2.5 py-1.5 rounded-lg bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/40 text-sky-300 font-semibold"
-                          >
-                            ★ Minta Upgrade Jaminan
-                          </button>
-                        )}
-
-                        {/* 2. Sistem Lelang Imbalan Jasa */}
-                        <button
-                          type="button"
-                          onClick={() => openActionModal('counter_offer', app)}
-                          className="px-2.5 py-1.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 font-semibold"
-                        >
-                          Lelang Jasa
-                        </button>
-
-                        {/* 2b. Sistem Lelang Pokok Pinjaman */}
-                        <button
-                          type="button"
-                          onClick={() => openActionModal('principal_offer', app)}
-                          className="px-2.5 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 font-semibold"
-                        >
-                          Lelang Pokok
-                        </button>
-
-                        {/* 2c. Persetujuan Tenor Final (Non-Lelang / Harga Mati) */}
-                        <button
-                          type="button"
-                          onClick={() => openActionModal('tenor_approval', app)}
-                          className="px-2.5 py-1.5 rounded-lg bg-teal-600/20 hover:bg-teal-600/30 border border-teal-500/40 text-teal-300 font-semibold"
-                        >
-                          Persetujuan Tenor
-                        </button>
-
-                        {/* 3. Tolak Permanen */}
-                        <button
-                          type="button"
-                          onClick={() => openActionModal('rejected', app)}
-                          className="px-2.5 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-400 font-semibold"
-                        >
-                          Tolak
-                        </button>
-
-                        {/* 4. Kabari ACC via WA */}
-                        <button
-                          type="button"
-                          onClick={() => openActionModal('approved', app)}
-                          className="px-2.5 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 font-semibold"
-                        >
-                          WA Info ACC
-                        </button>
-
-                        {/* 5. Review & Masukkan ke Catatan Piutang */}
-                        <button
-                          type="button"
-                          onClick={() => handleApproveApplication(app)}
-                          className={`px-3.5 py-1.5 rounded-lg bg-gradient-to-r ${themeStyle.gradientBtn} text-white font-bold`}
-                        >
-                          Review & Setujui
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* MODAL AKSI: Feedback Jaminan / Drop-Off / Lelang Jasa / Lelang Pokok / Edit Template WA */}
-      {actionModal.open && actionModal.app && (
-        <div className="fixed inset-0 z-[1000] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className={`border rounded-2xl max-w-lg w-full max-h-[88vh] overflow-y-auto p-5 space-y-4 shadow-2xl ${modalBg}`}>
-            <div className="flex items-center justify-between border-b border-slate-700/60 pb-3">
-              <h4 className="text-sm font-bold text-white">
-                {actionModal.type === 'collateral_drop' && 'Feedback & Serah Terima / Drop Jaminan'}
-                {actionModal.type === 'counter_offer' && 'Sistem Lelang Imbalan Jasa (Minta Penawaran Ulang)'}
-                {actionModal.type === 'principal_offer' && 'Sistem Lelang Pokok Pinjaman (Tentukan Nominal Pokok)'}
-                {actionModal.type === 'upgrade_collateral' && 'Minta Peminjam Upgrade ke Kontrak 3 (Jaminan)'}
-                {actionModal.type === 'rejected' && 'Tolak Pengajuan Pinjaman'}
-                {actionModal.type === 'approved' && 'Kirim Notifikasi Persetujuan (ACC) via WhatsApp'}
-                {actionModal.type === 'tenor_approval' && 'Persetujuan Tenor Final (Ketentuan Tetap / Non-Lelang)'}
-              </h4>
-              <button
-                type="button"
-                onClick={() => setActionModal((prev) => ({ ...prev, open: false }))}
-                className="text-slate-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              {/* Kontrol Khusus Drop & Serah Terima Jaminan */}
-              {actionModal.type === 'collateral_drop' && (
-                <>
-                  <label className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-950/50 border border-emerald-700/60 cursor-pointer text-emerald-200 font-semibold">
-                    <input
-                      type="checkbox"
-                      checked={actionModal.collateralReceived}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        const note = checked
-                          ? 'Barang jaminan telah diterima dan diverifikasi fisik oleh Pemberi Pinjaman. Silakan lanjutkan proses pencairan.'
-                          : actionModal.collateralNote;
-                        setActionModal((prev) => ({
-                          ...prev,
-                          collateralReceived: checked,
-                          collateralNote: note,
-                          waMessage: buildWaMessage('collateral_drop', prev.app, {
-                            collateralNote: note,
-                            dropAddress: prev.dropAddress
-                          })
-                        }));
-                      }}
-                      className="accent-emerald-500"
-                    />
-                    <span>✓ Tandai Barang Jaminan Sudah Diterima (Serah Terima Selesai)</span>
-                  </label>
-
-                  <div>
-                    <label className="block text-slate-300 mb-1">Catatan / Feedback Kondisi Jaminan:</label>
-                    <input
-                      type="text"
-                      value={actionModal.collateralNote}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setActionModal((prev) => ({
-                          ...prev,
-                          collateralNote: val,
-                          waMessage: buildWaMessage('collateral_drop', prev.app, {
-                            collateralNote: val,
-                            dropAddress: prev.dropAddress
-                          })
-                        }));
-                      }}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-300 mb-1">
-                      Alamat Drop-Off / Titip Jaminan (Bisa diedit manual jika tidak di rumah):
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={actionModal.dropAddress}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setActionModal((prev) => ({
-                          ...prev,
-                          dropAddress: val,
-                          waMessage: buildWaMessage('collateral_drop', prev.app, {
-                            collateralNote: prev.collateralNote,
-                            dropAddress: val
-                          })
-                        }));
-                      }}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white"
-                    />
-                  </div>
-                </>
-              )}
-
-              {/* Kontrol Khusus Lelang Pokok Pinjaman */}
-              {actionModal.type === 'principal_offer' && (() => {
-                const limits = getAppContractLimits(actionModal.app);
-                return (
-                  <div className="space-y-2.5">
-                    <div className="p-2.5 rounded-lg bg-indigo-950/60 border border-indigo-500/40 text-[11px] text-indigo-200 flex flex-wrap items-center justify-between gap-1">
-                      <span className="font-bold">{limits.contractLabel}</span>
-                      <span className="font-mono font-semibold text-emerald-300">
-                        Batas: {limits.cleanCurr} {limits.minVal.toLocaleString('id-ID')} – {limits.maxVal.toLocaleString('id-ID')}
-                      </span>
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 mb-1">
-                        Nominal Pokok Tawaran / Lelang ({limits.cleanCurr}):
-                      </label>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={formatNumberWithSeparator(actionModal.offeredPrincipal)}
-                        onChange={(e) => {
-                          const rawDigits = e.target.value.replace(/\D/g, '');
-                          const clampedDigits = clampContractAmount(rawDigits, limits);
-                          const autoNote = `Penyesuaian nominal pokok pinjaman menjadi ${limits.cleanCurr} ${Number(clampedDigits || 0).toLocaleString('id-ID')}.`;
-                          setActionModal((prev) => ({
-                            ...prev,
-                            offeredPrincipal: clampedDigits,
-                            reasonText: autoNote,
-                            waMessage: buildWaMessage('principal_offer', prev.app, {
-                              offeredPrincipal: clampedDigits,
-                              reasonText: autoNote
-                            })
-                          }));
-                        }}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-indigo-500/60 text-white font-bold"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 mb-1">Catatan / Syarat Lelang Pokok:</label>
-                      <textarea
-                        rows={2}
-                        value={actionModal.reasonText}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setActionModal((prev) => ({
-                            ...prev,
-                            reasonText: val,
-                            waMessage: buildWaMessage('principal_offer', prev.app, {
-                              offeredPrincipal: prev.offeredPrincipal,
-                              reasonText: val
-                            })
-                          }));
-                        }}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white"
-                      />
-                    </div>
-                  </div>
-                );
-              })()}
-              {/* Kontrol Khusus Persetujuan Tenor Final */}
-              {actionModal.type === 'tenor_approval' && (() => {
-                const limits = getAppContractLimits(actionModal.app);
-
-                const handleTenorChange = (rawInput, customReason) => {
-                  const digitsOnly = String(rawInput || '').replace(/\D/g, '');
-                  const clamped =
-                    digitsOnly === ''
-                      ? ''
-                      : String(Math.min(12, Math.max(1, parseInt(digitsOnly, 10) || 1)));
-                  const tenorForMsg = clamped || '1';
-                  const nextReason =
-                    customReason !== undefined
-                      ? customReason
-                      : `Persetujuan tenor final ditetapkan menjadi ${tenorForMsg} bulan (ketentuan tetap / non-lelang). Silakan konfirmasi YES (Setuju) atau NO (Tolak/Batal).`;
-
-                  setActionModal((prev) => ({
-                    ...prev,
-                    offeredTenor: clamped,
-                    reasonText: nextReason,
-                    waMessage: buildWaMessage('tenor_approval', prev.app, {
-                      offeredTenor: tenorForMsg,
-                      reasonText: nextReason
-                    })
-                  }));
-                };
-
-                return (
-                  <div className="space-y-2.5">
-                    <div className="p-2.5 rounded-lg bg-teal-950/60 border border-teal-500/40 text-[11px] text-teal-200 flex flex-wrap items-center justify-between gap-1">
-                      <span className="font-bold">{limits.contractLabel}</span>
-                      <span className="font-mono font-semibold text-emerald-300">
-                        Tenor Final: 1 – 12 Bulan (YES / NO)
-                      </span>
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 mb-1">
-                        Tenor Final yang Disetujui (Bulan):
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="12"
-                        inputMode="numeric"
-                        placeholder="Contoh: 3"
-                        value={actionModal.offeredTenor}
-                        onChange={(e) => handleTenorChange(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-teal-500/60 text-white font-bold"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 mb-1">
-                        Catatan / Ketentuan Tenor Final:
-                      </label>
-                      <textarea
-                        rows={2}
-                        value={actionModal.reasonText}
-                        onChange={(e) =>
-                          handleTenorChange(actionModal.offeredTenor || '1', e.target.value)
-                        }
-                        className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white"
-                      />
-                    </div>
-                  </div>
-                );
-              })()}
-      
-
-              {/* Kontrol Alasan Lelang Jasa / Penolakan */}
-              {(actionModal.type === 'counter_offer' || actionModal.type === 'rejected') && (
-                <div>
-                  <label className="block text-slate-300 mb-1">
-                    {actionModal.type === 'counter_offer'
-                      ? 'Pesan Penawaran Ulang Imbalan Jasa (Muncul di Link Peminjam):'
-                      : 'Alasan Penolakan:'}
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={actionModal.reasonText}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setActionModal((prev) => ({
-                        ...prev,
-                        reasonText: val,
-                        waMessage: buildWaMessage(prev.type, prev.app, { reasonText: val })
-                      }));
-                    }}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white"
-                  />
-                </div>
-              )}
-
-              {/* Kotak Pesan WhatsApp (Bisa Diedit Langsung + Simpan Template) */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-slate-300 font-semibold">Preview Pesan WhatsApp (Bisa Diedit Manual):</label>
-                  <button
-                    type="button"
-                    onClick={handleSaveCurrentAsTemplate}
-                    className="text-[11px] text-emerald-400 hover:underline"
-                  >
-                    Simpan Jadi Template Default
-                  </button>
-                </div>
-                <textarea
-                  rows={5}
-                  value={actionModal.waMessage}
-                  onChange={(e) => setActionModal((prev) => ({ ...prev, waMessage: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-emerald-700/60 text-white font-sans leading-relaxed"
-                />
-                <div className="text-[10px] text-slate-400 mt-1">
-                  Variabel otomatis: {'{nama}'}, {'{nominal}'}, {'{pokok}'}, {'{jasa}'}, {'{tenor}'}, {'{jaminan}'}, {'{alamat_drop}'}, {'{link_status}'}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-700/60">
-              {actionModal.type !== 'approved' && (
-                <button
-                  type="button"
-                  onClick={() => handleConfirmActionModal(false)}
-                  className="px-3.5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold"
-                >
-                  Simpan ke Link Saja
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => handleConfirmActionModal(true)}
-                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold"
-              >
-                {actionModal.type === 'approved' ? 'Buka WhatsApp & Kirim Info ACC' : 'Simpan & Kirim via WhatsApp'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-              
       {/* MODAL: Form Tambah / Edit Pinjaman */}
       {isDebtModalOpen && (
         <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 pb-24 sm:pb-6 overflow-y-auto">
@@ -5963,354 +4550,233 @@ const getDynamicTierTexts = (targetCurr) => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
-                    <User className="w-3.5 h-3.5 text-amber-400" /> {t.nameLabel} *
+                    <User className="w-3.5 h-3.5" /> {t.nameLabel} *
                   </label>
-                  <input 
-                    type="text" 
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className={`w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none border ${inputBg}`}
-                  />
+                  <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`} />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
                     <UserCheck className="w-3.5 h-3.5 text-emerald-400" /> {t.lenderNameLabel}
                   </label>
-                  <input 
-                    type="text" 
-                    value={lenderName}
-                    onChange={(e) => setLenderName(e.target.value)}
-                    className={`w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none border ${inputBg}`}
-                  />
+                  <input type="text" value={lenderName} onChange={(e) => setLenderName(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`} />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
                     <IdCard className="w-3.5 h-3.5 text-sky-400" /> {t.debtorIdLabel}
                   </label>
-                  <input 
-                    type="text" 
-                    value={debtorIdNo}
-                    onChange={(e) => setDebtorIdNo(e.target.value)}
-                    className={`w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none border ${inputBg}`}
-                  />
+                  <input type="text" value={debtorIdNo} onChange={(e) => setDebtorIdNo(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`} />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
-                    <IdCard className="w-3.5 h-3.5 text-teal-400" /> {t.creditorIdLabel}
+                    <IdCard className="w-3.5 h-3.5 text-amber-400" /> {t.creditorIdLabel}
                   </label>
-                  <input 
-                    type="text" 
-                    value={creditorIdNo}
-                    onChange={(e) => setCreditorIdNo(e.target.value)}
-                    className={`w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none border ${inputBg}`}
+                  <input type="text" value={creditorIdNo} onChange={(e) => setCreditorIdNo(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`} />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 text-rose-400" /> {t.debtorAddressLabel}
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder={t.debtorAddressPlaceholder}
+                    value={debtorAddress}
+                    onChange={(e) => setDebtorAddress(e.target.value)}
+                    className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}
                   />
                 </div>
-              </div>
 
-              {/* ALAMAT LENGKAP DEBITUR */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5 text-rose-400" /> {t.debtorAddressLabel}
-                </label>
-                <textarea 
-                  rows="2"
-                  placeholder={t.debtorAddressPlaceholder}
-                  value={debtorAddress}
-                  onChange={(e) => setDebtorAddress(e.target.value)}
-                  className={`w-full rounded-xl px-4 py-2 text-sm focus:outline-none border ${inputBg}`}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">{t.borrowerPhone}</label>
-                  <input 
-                    type="text" 
-                    value={borrowerPhone}
-                    onChange={(e) => setBorrowerPhone(e.target.value)}
-                    className={`w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none border ${inputBg}`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">{t.emergencyPhone}</label>
-                  <input 
-                    type="text" 
-                    value={emergencyPhone}
-                    onChange={(e) => setEmergencyPhone(e.target.value)}
-                    className={`w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none border ${inputBg}`}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">{t.categoryLabel}</label>
-                  <select 
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className={`w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none border ${inputBg}`}>
-                    {categories.map((cat, idx) => (
-                      <option key={idx} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">{t.loanType}</label>
-                  <select 
-                    value={type}
-                    onChange={(e) => setType(e.target.value)}
-                    className={`w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none border ${inputBg}`}>
-                    {loanTypes.map((item, idx) => (
-                      <option key={idx} value={item}>{item}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* TOGGLE PAKET PINJAMAN MIKRO KHUSUS */}
-              <div className={`p-3.5 rounded-xl border ${bgInnerBox}`}>
-                <label className="flex items-start gap-2.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={lateFeeMode === 'micro'}
-                    onChange={(e) => {
-                     if (e.target.checked) {
-                     setLateFeeMode('micro');
-                            setCollateral(false);
-                            setCollateralDesc('');
-                            const microLimits = getContractLimits({ isMicro: true, hasCollateral: false, currencyCode: debtCurrency });
-                            setAmount((prev) => clampContractAmount(prev, microLimits));
-                          } else {
-                            setLateFeeMode('auto');
-                          }
-                    }}
-                    className="w-4 h-4 rounded mt-0.5 shrink-0"
-                  />
-                  <div className="min-w-0">
-                    <span className="text-xs font-bold text-amber-400 block">
-                      {t.microLoanToggleLabel}
-                    </span>
-                    <span className="text-[11px] text-slate-400 block mt-0.5">
-                      {t.microLoanToggleHint}
-                    </span>
-                  </div>
-                </label>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">{t.currLabel}</label>
-                  <select 
-                    value={debtCurrency}
-                    onChange={(e) => setDebtCurrency(e.target.value)}
-                    className={`w-full rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none border ${inputBg}`}>
-                    {currenciesList.map((c) => (
-                      <option key={c.code} value={c.code}>{c.code} ({getCurrencySymbolDynamic(c.code)})</option>
-                    ))}
+                  <select value={debtCurrency} onChange={(e) => setDebtCurrency(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}>
+                    {currenciesList.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">{t.loanAmount} ({getCurrencySymbolDynamic(debtCurrency)})</label>
-                  <input 
-                    type="text" 
-                    inputMode="numeric"
-                    required
-                    placeholder="1.000.000"
-                    value={formatNumberWithSeparator(amount)}
-                    onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))}
-                    className={`w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none border ${inputBg}`}
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {(() => {
+                  const modalLimits = getContractLimits({
+                    isMicro: lateFeeMode === 'micro',
+                    hasCollateral: collateral,
+                    currencyCode: debtCurrency
+                  });
+                  return (
+                    <div>
+                      <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+                        <label className="text-xs font-semibold text-slate-400">{t.loanAmount} *</label>
+                        <span className="text-[11px] font-bold text-emerald-400">
+                          Maks: {modalLimits.cleanCurr} {formatNumberWithSeparator(modalLimits.maxVal)}
+                        </span>
+                      </div>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        required
+                        value={formatNumberWithSeparator(amount)}
+                        onChange={(e) => {
+                          const rawDigits = e.target.value.replace(/\D/g, '');
+                          const clamped = clampContractAmount(rawDigits, modalLimits);
+                          setAmount(clamped);
+                        }}
+                        className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        {modalLimits.contractLabel}: Min {modalLimits.cleanCurr} {formatNumberWithSeparator(modalLimits.minVal)} – Maks {modalLimits.cleanCurr} {formatNumberWithSeparator(modalLimits.maxVal)}
+                      </p>
+                    </div>
+                  );
+                })()}
+
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-semibold text-slate-400 flex items-center gap-1">
-                      <Gift className="w-3.5 h-3.5 text-amber-400" /> {t.bonusPercentage}
+                      <Gift className="w-3.5 h-3.5 text-amber-400" /> {t.bonusPercentage} (Maks 20%)
                     </label>
-                    <div className="flex items-center gap-3 text-xs">
-                      <label className="flex items-center gap-1 cursor-pointer font-semibold text-amber-400">
-                        <input 
-                          type="checkbox" 
-                          checked={bonusType === 'bonus'}
-                          onChange={() => setBonusType('bonus')}
-                          className="rounded accent-amber-500"
-                        />
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-slate-400">{t.selectRewardType}</span>
+                      <button
+                        type="button"
+                        onClick={() => setBonusType('bonus')}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${bonusType === 'bonus' ? `${themeStyle.bgAccent} text-white` : isDarkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-600'}`}>
                         {t.bonusText}
-                      </label>
-                      <label className="flex items-center gap-1 cursor-pointer font-semibold text-sky-400">
-                        <input 
-                          type="checkbox" 
-                          checked={bonusType === 'interest'}
-                          onChange={() => setBonusType('interest')}
-                          className="rounded accent-sky-500"
-                        />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBonusType('interest')}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${bonusType === 'interest' ? `${themeStyle.bgAccent} text-white` : isDarkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-600'}`}>
                         {t.interestText}
-                      </label>
+                      </button>
                     </div>
                   </div>
-                  <input 
-                    type="number" 
+
+                  <input
+                    type="number"
                     min="0"
                     max="20"
                     step="0.1"
-                    placeholder="0"
                     value={bonusPercent}
                     onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === '') {
+                      const val = parseFloat(e.target.value);
+                      if (isNaN(val)) {
                         setBonusPercent('');
-                        return;
-                      }
-                      const num = parseFloat(val);
-                      if (!isNaN(num) && num > 20) {
-                        setBonusPercent('20');
                       } else {
-                        setBonusPercent(val);
+                        setBonusPercent(String(Math.min(Math.max(val, 0), 20)));
                       }
                     }}
-                    className={`w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none border ${inputBg}`}
+                    className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}
                   />
+
+                  {amount && parseFloat(bonusPercent) > 0 && (
+                    <span className="text-[11px] text-emerald-400 mt-1 block font-medium">
+                      {t.totalPlusLabel} {bonusType === 'interest' ? t.interestText : t.bonusText}: {getCurrencySymbolDynamic(debtCurrency)} {(parseFloat(amount) + (parseFloat(amount) * (parseFloat(bonusPercent) / 100))).toLocaleString()}
+                    </span>
+                  )}
                 </div>
 
-                {/* KOLOM JAMINAN / AGUNAN + KETERANGAN JAMINAN */}
-                <div className="flex flex-col justify-end">
-                  <label
-                    className={`flex items-center gap-2 border p-3 rounded-xl ${inputBg} ${
-                      lateFeeMode === 'micro' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-                    }`}
-                  >
-                    <input 
-                      type="checkbox" 
-                      checked={collateral}
-                      disabled={lateFeeMode === 'micro'}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setCollateral(checked);
-                        if (!checked) {
-                          setCollateralDesc('');
-                          const noColLimits = getContractLimits({ isMicro: lateFeeMode === 'micro', hasCollateral: false, currencyCode: debtCurrency });
-                          setAmount((prev) => clampContractAmount(prev, noColLimits));
-                        }
-                      }}
-                      className="w-4 h-4 rounded disabled:opacity-40"
-                    />
-                    <span className="text-sm font-medium">{t.hasCollateral}</span>
-                  </label>
-                  <p className={`text-[11px] mt-1.5 px-1 font-medium ${collateral ? 'text-emerald-400' : 'text-slate-400'}`}>
-                    {collateral ? t.collateralTemplateHintWith : t.collateralTemplateHintWithout}
-                  </p>
-                </div>
-              </div>
-
-              {collateral && lateFeeMode !== 'micro' && (
-                <div className={`p-3.5 rounded-xl border ${bgInnerBox}`}>
-                  <label className="block text-xs font-semibold text-emerald-400 mb-1">
-                    {t.collateralDesc} *
-                  </label>
-                  <input 
-                    type="text"
-                    placeholder={t.collateralDesc}
-                    value={collateralDesc}
-                    onChange={(e) => setCollateralDesc(e.target.value)}
-                    className={`w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none border ${inputBg}`}
-                  />
-                </div>
-              )}
-
-              <div className="space-y-3">
+                {/* SKEMA DENDA KETERLAMBATAN */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">{t.payMethod}</label>
-                  <select 
-                    value={paymentMethodKey}
-                    onChange={(e) => setPaymentMethodKey(e.target.value)}
-                    className={`w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none border ${inputBg}`}>
-                    <option value="transfer">{t.methods.transfer}</option>
-                    <option value="ewallet">{t.methods.ewallet}</option>
-                    <option value="cash">{t.methods.cash}</option>
-                    <option value="flexible">{t.methods.flexible}</option>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400" /> {t.lateFeeModeLabel}
+                  </label>
+                  <div className="flex gap-1.5 mb-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setLateFeeMode('auto')}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold border transition ${lateFeeMode === 'auto' ? `${themeStyle.bgAccent} text-white border-transparent` : isDarkMode ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-300'}`}>
+                      {t.lateFeeModeAuto}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLateFeeMode('manual')}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold border transition ${lateFeeMode === 'manual' ? `${themeStyle.bgAccent} text-white border-transparent` : isDarkMode ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-300'}`}>
+                      {t.lateFeeModeManual}
+                    </button>
+                  </div>
+
+                  {lateFeeMode === 'manual' ? (
+                    <>
+                      <input type="number" min="0" step="0.5" value={lateFeePercent} onChange={(e) => setLateFeePercent(e.target.value)} className={`w-full rounded-xl p-2 text-sm border ${inputBg}`} placeholder="%" />
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">{t.lateFeeSub}</span>
+                    </>
+                  ) : lateFeeMode === 'micro' ? (
+                    <div className={`p-2 rounded-lg border text-[10px] leading-relaxed ${isDarkMode ? 'bg-emerald-950/30 border-emerald-800/70 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-800'}`}>
+                      <div>• {t.microLoanToggleLabel}</div>
+                      <div>• {t.lateFeeSub} (Maks 32,5%)</div>
+                    </div>
+                  ) : (
+                    <div className={`p-2 rounded-lg border text-[10px] leading-relaxed ${isDarkMode ? 'bg-slate-800/70 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-300 text-slate-700'}`}>
+                      <div>• {t.lateFeeTierADesc}</div>
+                      <div>• {t.lateFeeTierBDesc}</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* TOGGLE PAKET PINJAMAN MIKRO KHUSUS */}
+                <div className="md:col-span-2">
+                  <div className={`p-3 rounded-xl border ${lateFeeMode === 'micro' ? (isDarkMode ? 'bg-emerald-950/25 border-emerald-700' : 'bg-emerald-50 border-emerald-300') : bgInnerBox}`}>
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={lateFeeMode === 'micro'}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setLateFeeMode('micro');
+                            setCollateral(false);
+                            setCollateralDesc('');
+                            const microLimits = getContractLimits({ isMicro: true, hasCollateral: false, currencyCode: debtCurrency });
+                            if (amount) {
+                              setAmount(clampContractAmount(String(amount).replace(/\D/g, ''), microLimits));
+                            }
+                          } else {
+                            setLateFeeMode('auto');
+                          }
+                        }}
+                        className="w-4 h-4 accent-emerald-500 rounded"
+                      />
+                      <span className="text-xs font-bold text-emerald-400">
+                        {t.microLoanToggleLabel}
+                      </span>
+                    </label>
+                    <p className="text-[11px] text-slate-400 mt-1 pl-6">
+                      {t.microLoanToggleHint}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
+                    <Phone className="w-3.5 h-3.5" /> {t.borrowerPhone}
+                  </label>
+                  <input type="tel" value={borrowerPhone} onChange={(e) => setBorrowerPhone(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`} />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
+                    <Phone className="w-3.5 h-3.5 text-emerald-400" /> {t.emergencyPhone}
+                  </label>
+                  <input type="tel" value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`} />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">{t.categoryLabel}</label>
+                  <select value={category} onChange={(e) => setCategory(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}>
+                    {categories.map((cat, i) => <option key={i} value={cat}>{cat}</option>)}
                   </select>
                 </div>
 
-                {paymentMethodKey !== 'cash' && (
-                  <div className={`p-3 rounded-xl border transition-all ${bgInnerBox}`}>
-                    <label className="block text-xs font-semibold text-sky-400 mb-1 flex items-center gap-1.5">
-                      <CreditCard className="w-3.5 h-3.5" /> {t.payAccountLabel}
-                    </label>
-                    <input 
-                      type="text" 
-                      placeholder={t.payAccountPlaceholder}
-                      value={paymentAccountInfo}
-                      onChange={(e) => setPaymentAccountInfo(e.target.value)}
-                      className={`w-full rounded-xl px-4 py-2 text-sm focus:outline-none border ${inputBg}`}
-                    />
-                  </div>
-                )}
-              </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">{t.loanType}</label>
+                  <select value={type} onChange={(e) => setType(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}>
+                    {loanTypes.map((lt, i) => <option key={i} value={lt}>{lt}</option>)}
+                  </select>
+                </div>
 
-              <div className={`p-4 rounded-xl border ${bgInnerBox}`}>
-                <label className="flex items-center gap-2 cursor-pointer mb-3">
-                  <input 
-                    type="checkbox" 
-                    checked={isInstallment}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setIsInstallment(checked);
-                      if (checked) {
-                        syncDueDateWithInstallments(startDate, installmentCount);
-                      }
-                    }}
-                    className="w-4 h-4 rounded"
-                  />
-                  <span className={`text-sm font-bold flex items-center gap-1.5 ${themeStyle.textAccent}`}>
-                    <Percent className="w-4 h-4" /> {t.installmentMode}
-                  </span>
-                </label>
-
-                {isInstallment && (
-                  <div className={`grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-300'}`}>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-400 mb-1">{t.installmentCount}</label>
-                      <input 
-                        type="number" 
-                        min="1"
-                        value={installmentCount}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setInstallmentCount(val);
-                          syncDueDateWithInstallments(startDate, val);
-                        }}
-                        className={`w-full rounded-xl px-3 py-2 text-sm focus:outline-none border ${inputBg}`}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-400 mb-1">{t.paidInstallments}</label>
-                      <input 
-                        type="number" 
-                        min="0"
-                        max={installmentCount}
-                        value={paidInstallments}
-                        onChange={(e) => setPaidInstallments(e.target.value)}
-                        className={`w-full rounded-xl px-3 py-2 text-sm focus:outline-none border ${inputBg}`}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Tanggal Pinjam, Jatuh Tempo & Skema Denda */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">{t.datePinjam}</label>
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     value={startDate}
                     onChange={(e) => {
                       const newStart = e.target.value;
@@ -6319,152 +4785,208 @@ const getDynamicTierTexts = (targetCurr) => {
                         syncDueDateWithInstallments(newStart, installmentCount);
                       }
                     }}
-                    className={`w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none border ${inputBg}`}
+                    className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}
                   />
                 </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">{t.dateTempo}</label>
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     value={dueDate}
                     onChange={(e) => setDueDate(e.target.value)}
-                    className={`w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none border ${inputBg}`}
+                    className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}
                   />
                 </div>
-              </div>
 
-              <div className={`p-3.5 rounded-xl border space-y-2.5 ${bgInnerBox}`}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
-                  <div>
-                    <label className="block text-xs font-semibold text-rose-400 mb-1 flex items-center gap-1">
-                      <AlertTriangle className="w-3.5 h-3.5" /> {t.lateFeeModeLabel}
-                    </label>
-                    <select 
-                      value={lateFeeMode}
-                      onChange={(e) => setLateFeeMode(e.target.value)}
-                      className={`w-full rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none border ${inputBg}`}>
-                      <option value="auto">{t.lateFeeModeAuto}</option>
-                      <option value="manual">{t.lateFeeModeManual}</option>
-                    </select>
-                  </div>
-
-                  {lateFeeMode === 'manual' && (
-                    <div>
-                      <label className="block text-xs font-semibold text-rose-400 mb-1">{t.lateFeeLabel}</label>
-                      <input 
-                        type="number" 
-                        min="0"
-                        step="0.1"
-                        placeholder="0"
-                        value={lateFeePercent}
-                        onChange={(e) => setLateFeePercent(e.target.value)}
-                        className={`w-full rounded-xl px-3 py-2 text-xs focus:outline-none border ${inputBg}`}
-                      />
-                    </div>
-                  )}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">{t.payMethod}</label>
+                  <select value={paymentMethodKey} onChange={(e) => setPaymentMethodKey(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}>
+                    <option value="transfer">{t.methods.transfer}</option>
+                    <option value="ewallet">{t.methods.ewallet}</option>
+                    <option value="cash">{t.methods.cash}</option>
+                    <option value="flexible">{t.methods.flexible}</option>
+                  </select>
                 </div>
 
-                {lateFeeMode === 'auto' ? (
-                  <div className="text-[11px] text-slate-400 space-y-0.5 pt-1 border-t border-slate-700/50">
-                    <p>• {t.lateFeeTierADesc}</p>
-                    <p>• {t.lateFeeTierBDesc}</p>
-                    <p className="text-amber-400/90 font-medium">* {t.lateFeeSub}</p>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">{t.status}</label>
+                  <select value={statusKey} onChange={(e) => setStatusKey(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}>
+                    <option value="active">{t.statusOptions.active}</option>
+                    <option value="dueSoon">{t.statusOptions.dueSoon}</option>
+                    <option value="paid">{t.statusOptions.paid}</option>
+                  </select>
+                </div>
+
+                {paymentMethodKey !== 'cash' && (
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
+                      <CreditCard className="w-3.5 h-3.5 text-sky-400" /> {t.payAccountLabel}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={t.payAccountPlaceholder}
+                      value={paymentAccountInfo}
+                      onChange={(e) => setPaymentAccountInfo(e.target.value)}
+                      className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}
+                    />
                   </div>
-                ) : (
-                  <span className="text-[10px] text-slate-400 block">{t.lateFeeSub}</span>
                 )}
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">{t.status}</label>
-                <select 
-                  value={statusKey}
-                  onChange={(e) => setStatusKey(e.target.value)}
-                  className={`w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none border ${inputBg}`}>
-                  <option value="active">{t.statusOptions.active}</option>
-                  <option value="dueSoon">{t.statusOptions.dueSoon}</option>
-                  <option value="paid">{t.statusOptions.paid}</option>
-                </select>
+              {/* Installment Mode */}
+              <div className={`p-3.5 rounded-xl border ${bgInnerBox}`}>
+                <label className="flex items-center gap-2 cursor-pointer mb-2">
+                  <input
+                    type="checkbox"
+                    checked={isInstallment}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setIsInstallment(checked);
+                      if (checked) {
+                        syncDueDateWithInstallments(startDate, installmentCount);
+                      }
+                    }}
+                    className="w-4 h-4 accent-amber-500 rounded"
+                  />
+                  <span className={`text-sm font-bold flex items-center gap-1.5 ${themeStyle.textAccent}`}>
+                    <Percent className="w-4 h-4" /> {t.installmentMode}
+                  </span>
+                </label>
+
+                {isInstallment && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 pt-3 border-t border-slate-800">
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">{t.installmentCount}</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="120"
+                        value={installmentCount}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setInstallmentCount(val);
+                          syncDueDateWithInstallments(startDate, val);
+                        }}
+                        className={`w-full rounded-xl p-2 text-sm border ${inputBg}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">{t.paidInstallments}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max={installmentCount}
+                        value={paidInstallments}
+                        onChange={(e) => setPaidInstallments(e.target.value)}
+                        className={`w-full rounded-xl p-2 text-sm border ${inputBg}`}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* KOLOM LAMPIRAN TANDA TANGAN & CAP SIDIK JARI */}
-              <div className={`p-4 rounded-xl border space-y-3 ${bgInnerBox}`}>
-                <span className={`text-xs font-bold flex items-center gap-1.5 ${themeStyle.textAccent}`}>
+              {/* Collateral Section */}
+              <div className={`p-3.5 rounded-xl border ${bgInnerBox}`}>
+                <label className="flex items-center gap-2 cursor-pointer mb-1.5">
+                  <input
+                    type="checkbox"
+                    checked={collateral}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setCollateral(checked);
+                      if (checked && lateFeeMode === 'micro') {
+                        setLateFeeMode('auto');
+                      }
+                      const nextLimits = getContractLimits({
+                        isMicro: !checked && lateFeeMode === 'micro',
+                        hasCollateral: checked,
+                        currencyCode: debtCurrency
+                      });
+                      if (amount) {
+                        setAmount(clampContractAmount(String(amount).replace(/\D/g, ''), nextLimits));
+                      }
+                    }}
+                    className="w-4 h-4 accent-amber-500 rounded"
+                  />
+                  <span className="text-sm font-semibold">{t.hasCollateral}</span>
+                </label>
+
+                <p className={`text-[11px] mb-2 pl-6 ${collateral ? 'text-amber-400' : 'text-sky-400'}`}>
+                  {collateral ? t.collateralTemplateHintWith : t.collateralTemplateHintWithout}
+                </p>
+
+                {collateral && (
+                  <input type="text" placeholder={t.collateralDesc} value={collateralDesc} onChange={(e) => setCollateralDesc(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border mt-1 ${inputBg}`} />
+                )}
+              </div>
+
+              {/* Lampiran Tanda Tangan & Cap Sidik Jari */}
+              <div className={`p-3.5 rounded-xl border ${bgInnerBox}`}>
+                <label className={`block text-xs font-bold mb-2.5 flex items-center gap-1.5 ${themeStyle.textAccent}`}>
                   <Fingerprint className="w-4 h-4" /> {t.authAssetsTitle}
-                </span>
+                </label>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Cap Jari Kreditur */}
-                  <div className={`p-2.5 rounded-xl border ${inputBg}`}>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1.5 flex items-center gap-1">
-                      <Fingerprint className="w-3.5 h-3.5 text-emerald-400" /> {t.creditorFingerprintLabel}
-                    </label>
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="cursor-pointer px-2.5 py-1.5 bg-slate-700/60 hover:bg-slate-700 text-slate-200 rounded-lg text-[11px] font-medium flex items-center gap-1 transition">
-                        <Camera className="w-3.5 h-3.5" /> {t.uploadImgBtn}
+                  <div className={`p-2.5 rounded-xl border ${isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                    <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">{t.creditorFingerprintLabel}</span>
+                    <div className="flex items-center gap-2">
+                      <label className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border flex items-center gap-1 transition ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-200' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'}`}>
+                        <Fingerprint className="w-3.5 h-3.5 text-emerald-400" /> {t.uploadImgBtn}
                         <input type="file" accept="image/*" onChange={(e) => handleAuthAssetUpload(e, setCreditorFingerprint)} className="hidden" />
                       </label>
                       {creditorFingerprint && (
                         <div className="flex items-center gap-1.5">
-                          <img src={creditorFingerprint} alt={t.creditorFingerprintLabel} className="w-8 h-8 object-contain bg-white rounded border border-slate-500 p-0.5" />
-                          <button type="button" onClick={() => setCreditorFingerprint(null)} className="text-rose-400 hover:text-rose-300 text-xs font-bold px-1">×</button>
+                          <img src={creditorFingerprint} alt="Creditor FP" className="w-8 h-8 object-contain rounded border border-slate-600 bg-white" />
+                          <button type="button" onClick={() => setCreditorFingerprint(null)} className="text-rose-400 hover:text-rose-300 p-1"><X className="w-3.5 h-3.5" /></button>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Tanda Tangan Kreditur */}
-                  <div className={`p-2.5 rounded-xl border ${inputBg}`}>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1.5 flex items-center gap-1">
-                      <PenTool className="w-3.5 h-3.5 text-emerald-400" /> {t.creditorSignatureLabel}
-                    </label>
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="cursor-pointer px-2.5 py-1.5 bg-slate-700/60 hover:bg-slate-700 text-slate-200 rounded-lg text-[11px] font-medium flex items-center gap-1 transition">
-                        <Camera className="w-3.5 h-3.5" /> {t.uploadImgBtn}
+                  <div className={`p-2.5 rounded-xl border ${isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                    <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">{t.creditorSignatureLabel}</span>
+                    <div className="flex items-center gap-2">
+                      <label className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border flex items-center gap-1 transition ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-200' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'}`}>
+                        <PenTool className="w-3.5 h-3.5 text-sky-400" /> {t.uploadImgBtn}
                         <input type="file" accept="image/*" onChange={(e) => handleAuthAssetUpload(e, setCreditorSignature)} className="hidden" />
                       </label>
                       {creditorSignature && (
                         <div className="flex items-center gap-1.5">
-                          <img src={creditorSignature} alt={t.creditorSignatureLabel} className="w-12 h-8 object-contain bg-white rounded border border-slate-500 p-0.5" />
-                          <button type="button" onClick={() => setCreditorSignature(null)} className="text-rose-400 hover:text-rose-300 text-xs font-bold px-1">×</button>
+                          <img src={creditorSignature} alt="Creditor Sign" className="w-12 h-8 object-contain rounded border border-slate-600 bg-white" />
+                          <button type="button" onClick={() => setCreditorSignature(null)} className="text-rose-400 hover:text-rose-300 p-1"><X className="w-3.5 h-3.5" /></button>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Cap Jari Debitur */}
-                  <div className={`p-2.5 rounded-xl border ${inputBg}`}>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1.5 flex items-center gap-1">
-                      <Fingerprint className="w-3.5 h-3.5 text-amber-400" /> {t.debtorFingerprintLabel}
-                    </label>
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="cursor-pointer px-2.5 py-1.5 bg-slate-700/60 hover:bg-slate-700 text-slate-200 rounded-lg text-[11px] font-medium flex items-center gap-1 transition">
-                        <Camera className="w-3.5 h-3.5" /> {t.uploadImgBtn}
+                  <div className={`p-2.5 rounded-xl border ${isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                    <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">{t.debtorFingerprintLabel}</span>
+                    <div className="flex items-center gap-2">
+                      <label className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border flex items-center gap-1 transition ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-200' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'}`}>
+                        <Fingerprint className="w-3.5 h-3.5 text-emerald-400" /> {t.uploadImgBtn}
                         <input type="file" accept="image/*" onChange={(e) => handleAuthAssetUpload(e, setDebtorFingerprint)} className="hidden" />
                       </label>
                       {debtorFingerprint && (
                         <div className="flex items-center gap-1.5">
-                          <img src={debtorFingerprint} alt={t.debtorFingerprintLabel} className="w-8 h-8 object-contain bg-white rounded border border-slate-500 p-0.5" />
-                          <button type="button" onClick={() => setDebtorFingerprint(null)} className="text-rose-400 hover:text-rose-300 text-xs font-bold px-1">×</button>
+                          <img src={debtorFingerprint} alt="Debtor FP" className="w-8 h-8 object-contain rounded border border-slate-600 bg-white" />
+                          <button type="button" onClick={() => setDebtorFingerprint(null)} className="text-rose-400 hover:text-rose-300 p-1"><X className="w-3.5 h-3.5" /></button>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Tanda Tangan Debitur */}
-                  <div className={`p-2.5 rounded-xl border ${inputBg}`}>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1.5 flex items-center gap-1">
-                      <PenTool className="w-3.5 h-3.5 text-amber-400" /> {t.debtorSignatureLabel}
-                    </label>
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="cursor-pointer px-2.5 py-1.5 bg-slate-700/60 hover:bg-slate-700 text-slate-200 rounded-lg text-[11px] font-medium flex items-center gap-1 transition">
-                        <Camera className="w-3.5 h-3.5" /> {t.uploadImgBtn}
+                  <div className={`p-2.5 rounded-xl border ${isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                    <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">{t.debtorSignatureLabel}</span>
+                    <div className="flex items-center gap-2">
+                      <label className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border flex items-center gap-1 transition ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-200' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'}`}>
+                        <PenTool className="w-3.5 h-3.5 text-sky-400" /> {t.uploadImgBtn}
                         <input type="file" accept="image/*" onChange={(e) => handleAuthAssetUpload(e, setDebtorSignature)} className="hidden" />
                       </label>
                       {debtorSignature && (
                         <div className="flex items-center gap-1.5">
-                          <img src={debtorSignature} alt={t.debtorSignatureLabel} className="w-12 h-8 object-contain bg-white rounded border border-slate-500 p-0.5" />
-                          <button type="button" onClick={() => setDebtorSignature(null)} className="text-rose-400 hover:text-rose-300 text-xs font-bold px-1">×</button>
+                          <img src={debtorSignature} alt="Debtor Sign" className="w-12 h-8 object-contain rounded border border-slate-600 bg-white" />
+                          <button type="button" onClick={() => setDebtorSignature(null)} className="text-rose-400 hover:text-rose-300 p-1"><X className="w-3.5 h-3.5" /></button>
                         </div>
                       )}
                     </div>
@@ -6472,183 +4994,138 @@ const getDynamicTierTexts = (targetCurr) => {
                 </div>
               </div>
 
+              {/* Camera / Proof */}
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">{t.cameraLabel}</label>
-                <div className="flex items-center gap-4">
-                  <label className={`cursor-pointer px-4 py-2.5 border rounded-xl text-sm font-medium flex items-center gap-2 transition ${inputBg}`}>
-                    <Camera className={`w-4 h-4 ${themeStyle.textAccent}`} /> {t.takePhoto}
-                    <input type="file" accept="image/*" capture="environment" onChange={handleImageCapture} className="hidden" />
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">{t.cameraLabel}</label>
+                <div className="flex items-center gap-3">
+                  <label className={`px-4 py-2.5 rounded-xl text-sm font-medium cursor-pointer border flex items-center gap-2 transition ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'}`}>
+                    <Camera className={`w-5 h-5 ${themeStyle.textAccent}`} /> {t.takePhoto}
+                    <input type="file" accept="image/*" onChange={handleImageCapture} className="hidden" />
                   </label>
-                  {image && <span className="text-xs text-emerald-400 font-medium">{t.photoAttached}</span>}
+                  {image && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-emerald-400 font-semibold">{t.photoAttached}</span>
+                      <button type="button" onClick={() => setImage(null)} className="text-rose-400 hover:text-rose-300 p-1"><X className="w-4 h-4" /></button>
+                    </div>
+                  )}
                 </div>
-                {image && (
-                  <div className="mt-2 relative w-24 h-24">
-                    <img src={image} alt={t.proofAltText} className="w-full h-full object-cover rounded-lg border border-slate-700" />
-                    <button type="button" onClick={() => setImage(null)} className="absolute -top-2 -right-2 bg-rose-600 text-white rounded-full p-1 text-xs">×</button>
-                  </div>
-                )}
               </div>
 
-              {/* SECTION LAMPIRAN 7 FOTO DOKUMEN HALAMAN 4 (4x6 VERIFIKASI DEBITUR + 2R JAMINAN & ETC) */}
-              <div className="border border-slate-700/70 rounded-xl p-3.5 bg-slate-900/40 space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                    {t.contract.page4Header}
+              {/* Lampiran 7 Foto Verifikasi Debitur, Jaminan & Etc (Halaman 4 Cetak) */}
+              <div className="mt-4 pt-4 border-t border-slate-700/60">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                    <Camera className="w-4 h-4" /> {t.contract.page4Header} (7 Foto)
                   </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-semibold shrink-0">
-                    {t.contract.page4SubBadge}
-                  </span>
+                  <span className="text-[11px] text-slate-400">4x6 & 2R</span>
                 </div>
 
-                {/* BARIS 1: 3 KOLOM VERIFIKASI IDENTITAS DEBITUR (4x6) */}
-                <div>
-                  <p className="text-[11px] font-semibold text-slate-300 mb-2">
-                    {t.contract.page4Sec1Title}
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    {[
-                      { label: t.contract.photoSlotIdDebtor, val: photoIdDebtor, setter: setPhotoIdDebtor },
-                      { label: t.contract.photoSlotSelfieDebtor, val: photoSelfieDebtor, setter: setPhotoSelfieDebtor },
-                      { label: t.contract.photoSlotSelfieIdDebtor, val: photoSelfieIdDebtor, setter: setPhotoSelfieIdDebtor }
-                    ].map((slot, i) => (
-                      <div key={i} className={`border rounded-lg p-2 flex flex-col items-center text-center ${inputBg}`}>
-                        <div className="w-20 h-28 border border-dashed border-slate-600 rounded overflow-hidden flex items-center justify-center bg-slate-950/50 mb-1.5 relative">
-                          {slot.val ? (
-                            <>
-                              <img src={slot.val} alt={slot.label} className="w-full h-full object-cover" />
-                              <button
-                                type="button"
-                                onClick={() => slot.setter('')}
-                                className="absolute top-1 right-1 bg-red-600/90 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center"
-                                title={t.delete}
-                              >
-                                ×
-                              </button>
-                            </>
-                          ) : (
-                            <span className="text-[10px] text-slate-500 px-1">4 × 6 cm</span>
-                          )}
+                <p className="text-[11px] font-semibold text-slate-300 mb-1.5">{t.contract.page4Sec1Title}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3">
+                  {[
+                    { label: t.contract.photoSlotIdDebtor, val: photoIdDebtor, set: setPhotoIdDebtor },
+                    { label: t.contract.photoSlotSelfieDebtor, val: photoSelfieDebtor, set: setPhotoSelfieDebtor },
+                    { label: t.contract.photoSlotSelfieIdDebtor, val: photoSelfieIdDebtor, set: setPhotoSelfieIdDebtor }
+                  ].map((slot, i) => (
+                    <div key={i} className={`p-2 rounded-xl border ${bgInnerBox}`}>
+                      <span className="block text-[11px] font-medium text-slate-300 mb-1.5 truncate" title={slot.label}>
+                        {slot.label}
+                      </span>
+                      {slot.val ? (
+                        <div className="relative group">
+                          <img src={slot.val} alt={slot.label} className="w-full h-24 object-cover rounded-lg border border-slate-600" />
+                          <button
+                            type="button"
+                            onClick={() => slot.set('')}
+                            className="absolute top-1 right-1 bg-rose-600 text-white p-1 rounded-full shadow"
+                            title="Hapus foto"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
                         </div>
-                        <span className="text-[10px] font-semibold leading-tight mb-1.5 line-clamp-2">{slot.label}</span>
-                        <label className="cursor-pointer text-[10px] font-bold px-2.5 py-1 rounded bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30 transition">
-                          {slot.val ? t.uploadedShort : t.uploadImgBtn}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => handlePage4PhotoUpload(e, slot.setter, true)}
-                            className="hidden"
-                          />
+                      ) : (
+                        <label className="flex flex-col items-center justify-center h-20 border border-dashed border-slate-600 rounded-lg cursor-pointer hover:border-amber-400 transition text-slate-400 hover:text-amber-300 text-[11px]">
+                          <Camera className="w-4 h-4 mb-1" />
+                          <span>{t.uploadImgBtn}</span>
+                          <input type="file" accept="image/*" onChange={(e) => handlePage4PhotoUpload(e, slot.set, true)} className="hidden" />
                         </label>
-                      </div>
-                    ))}
-                  </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
 
-                {/* BARIS 2: 2 KOLOM FOTO JAMINAN / PENYERAHAN (2R) */}
-                <div>
-                  <p className="text-[11px] font-semibold text-slate-300 mb-2">
-                    {t.contract.page4Sec2Title}
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {[
-                      {
-                        label: collateral ? t.contract.photoSlotCollateral1 : t.contract.photoSlotHandover1,
-                        val: photoCollateral1,
-                        setter: setPhotoCollateral1
-                      },
-                      {
-                        label: collateral ? t.contract.photoSlotCollateral2 : t.contract.photoSlotHandover2,
-                        val: photoCollateral2,
-                        setter: setPhotoCollateral2
-                      }
-                    ].map((slot, i) => (
-                      <div key={i} className={`border rounded-lg p-2.5 flex flex-col items-center text-center ${inputBg}`}>
-                        <div className="w-full h-28 border border-dashed border-slate-600 rounded overflow-hidden flex items-center justify-center bg-slate-950/50 mb-1.5 relative">
-                          {slot.val ? (
-                            <>
-                              <img src={slot.val} alt={slot.label} className="w-full h-full object-contain" />
-                              <button
-                                type="button"
-                                onClick={() => slot.setter('')}
-                                className="absolute top-1 right-1 bg-red-600/90 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center"
-                                title={t.delete}
-                              >
-                                ×
-                              </button>
-                            </>
-                          ) : (
-                            <span className="text-[10px] text-slate-500">2R (6 × 9 cm)</span>
-                          )}
+                <p className="text-[11px] font-semibold text-slate-300 mb-1.5">{t.contract.page4Sec2Title}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-3">
+                  {[
+                    { label: collateral ? t.contract.photoSlotCollateral1 : t.contract.photoSlotHandover1, val: photoCollateral1, set: setPhotoCollateral1 },
+                    { label: collateral ? t.contract.photoSlotCollateral2 : t.contract.photoSlotHandover2, val: photoCollateral2, set: setPhotoCollateral2 }
+                  ].map((slot, i) => (
+                    <div key={i} className={`p-2 rounded-xl border ${bgInnerBox}`}>
+                      <span className="block text-[11px] font-medium text-slate-300 mb-1.5 truncate" title={slot.label}>
+                        {slot.label}
+                      </span>
+                      {slot.val ? (
+                        <div className="relative">
+                          <img src={slot.val} alt={slot.label} className="w-full h-24 object-cover rounded-lg border border-slate-600" />
+                          <button
+                            type="button"
+                            onClick={() => slot.set('')}
+                            className="absolute top-1 right-1 bg-rose-600 text-white p-1 rounded-full shadow"
+                            title="Hapus foto"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
                         </div>
-                        <span className="text-[11px] font-semibold leading-tight mb-1.5">{slot.label}</span>
-                        <label className="cursor-pointer text-[10px] font-bold px-3 py-1 rounded bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30 transition">
-                          {slot.val ? t.uploadedShort : t.uploadImgBtn}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => handlePage4PhotoUpload(e, slot.setter, false)}
-                            className="hidden"
-                          />
+                      ) : (
+                        <label className="flex flex-col items-center justify-center h-20 border border-dashed border-slate-600 rounded-lg cursor-pointer hover:border-amber-400 transition text-slate-400 hover:text-amber-300 text-[11px]">
+                          <Camera className="w-4 h-4 mb-1" />
+                          <span>{t.uploadImgBtn}</span>
+                          <input type="file" accept="image/*" onChange={(e) => handlePage4PhotoUpload(e, slot.set, false)} className="hidden" />
                         </label>
-                      </div>
-                    ))}
-                  </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
 
-                {/* BARIS 3: 2 KOLOM PENDUKUNG / ETC 1 & ETC 2 (2R) */}
-                <div>
-                  <p className="text-[11px] font-semibold text-slate-300 mb-2">
-                    {t.contract.page4Sec3Title}
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {[
-                      { label: t.contract.photoSlotEtc1, val: photoEtc1, setter: setPhotoEtc1 },
-                      { label: t.contract.photoSlotEtc2, val: photoEtc2, setter: setPhotoEtc2 }
-                    ].map((slot, i) => (
-                      <div key={i} className={`border rounded-lg p-2.5 flex flex-col items-center text-center ${inputBg}`}>
-                        <div className="w-full h-28 border border-dashed border-slate-600 rounded overflow-hidden flex items-center justify-center bg-slate-950/50 mb-1.5 relative">
-                          {slot.val ? (
-                            <>
-                              <img src={slot.val} alt={slot.label} className="w-full h-full object-contain" />
-                              <button
-                                type="button"
-                                onClick={() => slot.setter('')}
-                                className="absolute top-1 right-1 bg-red-600/90 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center"
-                                title={t.delete}
-                              >
-                                ×
-                              </button>
-                            </>
-                          ) : (
-                            <span className="text-[10px] text-slate-500">2R (6 × 9 cm)</span>
-                          )}
+                <p className="text-[11px] font-semibold text-slate-300 mb-1.5">{t.contract.page4Sec3Title}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {[
+                    { label: t.contract.photoSlotEtc1, val: photoEtc1, set: setPhotoEtc1 },
+                    { label: t.contract.photoSlotEtc2, val: photoEtc2, set: setPhotoEtc2 }
+                  ].map((slot, i) => (
+                    <div key={i} className={`p-2 rounded-xl border ${bgInnerBox}`}>
+                      <span className="block text-[11px] font-medium text-slate-300 mb-1.5 truncate" title={slot.label}>
+                        {slot.label}
+                      </span>
+                      {slot.val ? (
+                        <div className="relative">
+                          <img src={slot.val} alt={slot.label} className="w-full h-24 object-cover rounded-lg border border-slate-600" />
+                          <button
+                            type="button"
+                            onClick={() => slot.set('')}
+                            className="absolute top-1 right-1 bg-rose-600 text-white p-1 rounded-full shadow"
+                            title="Hapus foto"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
                         </div>
-                        <span className="text-[11px] font-semibold leading-tight mb-1.5">{slot.label}</span>
-                        <label className="cursor-pointer text-[10px] font-bold px-3 py-1 rounded bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30 transition">
-                          {slot.val ? t.uploadedShort : t.uploadImgBtn}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => handlePage4PhotoUpload(e, slot.setter, false)}
-                            className="hidden"
-                          />
+                      ) : (
+                        <label className="flex flex-col items-center justify-center h-20 border border-dashed border-slate-600 rounded-lg cursor-pointer hover:border-amber-400 transition text-slate-400 hover:text-amber-300 text-[11px]">
+                          <Camera className="w-4 h-4 mb-1" />
+                          <span>{t.uploadImgBtn}</span>
+                          <input type="file" accept="image/*" onChange={(e) => handlePage4PhotoUpload(e, slot.set, false)} className="hidden" />
                         </label>
-                      </div>
-                    ))}
-                  </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              </div> 
+              </div>
 
-              <div className={`flex justify-end gap-3 pt-4 pb-6 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
-                <button 
-                  type="button" 
-                  onClick={() => setIsDebtModalOpen(false)}
-                  className={`px-5 py-2.5 rounded-xl font-medium text-sm transition ${isDarkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>
+              <div className={`flex justify-end gap-3 pt-4 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+                <button type="button" onClick={() => setIsDebtModalOpen(false)} className={`px-4 py-2 rounded-xl text-sm font-medium ${isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'}`}>
                   {t.cancel}
                 </button>
-                <button 
-                  type="submit" 
-                  className={`px-6 py-2.5 bg-gradient-to-r ${themeStyle.gradientBtn} text-white rounded-xl font-semibold text-sm shadow-lg transition`}>
+                <button type="submit" className={`px-6 py-2 bg-gradient-to-r ${themeStyle.gradientBtn} text-white rounded-xl font-bold text-sm shadow-lg`}>
                   {t.save}
                 </button>
               </div>
@@ -6657,65 +5134,60 @@ const getDynamicTierTexts = (targetCurr) => {
         </div>
       )}
 
-
-      {/* MODAL: Quick Pay */}
+      {/* MODAL: Quick Pay / Pencatatan Pembayaran dengan Tanggal & Jam Otomatis/Manual */}
       {isPayModalOpen && selectedDebtForPay && (() => {
-        const payDateLateInfo = calculateLateStatus(selectedDebtForPay, payCustomDate);
-        const totalWithLateOnModal = payDateLateInfo.effectiveTotal;
-        const remainingOnModal = Math.max(totalWithLateOnModal - (selectedDebtForPay.totalPaidAmount || 0), 0);
-        const paySym = getCurrencySymbolDynamic(selectedDebtForPay.currency || managerCurrency);
+        const payModalLateInfo = calculateLateStatus(selectedDebtForPay, payCustomDate);
+        const modalEffectiveTotal = payModalLateInfo.effectiveTotal;
+        const modalRemaining = Math.max(modalEffectiveTotal - (selectedDebtForPay.totalPaidAmount || 0), 0);
 
         return (
-          <div className="fixed inset-0 z-[999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className={`border rounded-2xl w-full max-w-md p-6 shadow-2xl ${modalBg}`}>
-              <h2 className="text-xl font-bold text-emerald-400 mb-4 flex items-center justify-between">
-                <span className="flex items-center gap-1.5"><Clock className="w-5 h-5" /> {t.payModalTitle}</span>
-                <button onClick={() => setIsPayModalOpen(false)} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
-              </h2>
+          <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 pb-24 sm:pb-6 overflow-y-auto">
+            <div className={`border rounded-2xl w-full max-w-md p-5 sm:p-6 shadow-2xl my-auto max-h-[82vh] overflow-y-auto ${modalBg}`}>
+              <h3 className={`text-lg font-bold mb-1 ${themeStyle.textAccent}`}>{t.payModalTitle}</h3>
+              <p className="text-xs text-slate-400 mb-4">{selectedDebtForPay.name} — {selectedDebtForPay.type}</p>
 
-              <div className={`p-4 rounded-xl border mb-4 space-y-2 text-sm ${bgInnerBox}`}>
+              <div className={`p-3 rounded-xl border mb-4 text-xs space-y-1.5 ${bgInnerBox}`}>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">{t.borrowerName}:</span>
-                  <span className="font-bold">{selectedDebtForPay.name}</span>
+                  <span className="text-slate-400">{t.totalWithBonus}:</span>
+                  <span className="font-bold">{getCurrencySymbolDynamic(selectedDebtForPay.currency || managerCurrency)} {selectedDebtForPay.amount.toLocaleString()}</span>
                 </div>
-                {payDateLateInfo.isLate && (
-                  <div className="flex justify-between text-rose-400 font-semibold text-xs pt-1 border-t border-slate-700/50">
-                    <span>{t.lateFeeAmountLabel} ({payDateLateInfo.effectiveLatePercent}% - {payDateLateInfo.activeDaysLate || payDateLateInfo.daysLate} {t.daysLateText}):</span>
-                    <span>+{paySym} {(payDateLateInfo.pendingLateFee || payDateLateInfo.lateFeeAmount).toLocaleString()}</span>
+                {payModalLateInfo.isLate && (
+                  <div className="flex justify-between text-rose-400">
+                    <span>{t.lateFeeAmountLabel} ({payModalLateInfo.effectiveLatePercent}% • {payModalLateInfo.daysLate} {t.daysLateText}):</span>
+                    <span className="font-bold">+{getCurrencySymbolDynamic(selectedDebtForPay.currency || managerCurrency)} {payModalLateInfo.lateFeeAmount.toLocaleString()}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
                   <span className="text-slate-400">{t.totalPaidSoFar}:</span>
-                  <span className="font-semibold text-cyan-400">
-                    {paySym} {(selectedDebtForPay.totalPaidAmount || 0).toLocaleString()}
-                  </span>
+                  <span className="font-bold text-emerald-400">{getCurrencySymbolDynamic(selectedDebtForPay.currency || managerCurrency)} {(selectedDebtForPay.totalPaidAmount || 0).toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between pt-1.5 border-t border-slate-700/60">
                   <span className="text-slate-400">{t.remaining}:</span>
-                  <span className="font-bold text-rose-400">
-                    {paySym} {remainingOnModal.toLocaleString()}
+                  <span className="font-bold text-amber-400">
+                    {getCurrencySymbolDynamic(selectedDebtForPay.currency || managerCurrency)} {modalRemaining.toLocaleString()}
                   </span>
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">{t.payAmountLabel}</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     inputMode="numeric"
                     value={formatNumberWithSeparator(payCustomAmount)}
                     onChange={(e) => setPayCustomAmount(e.target.value.replace(/\D/g, ''))}
-                    className={`w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none border ${inputBg}`}
+                    className={`w-full rounded-xl p-2.5 text-sm font-bold border ${inputBg}`}
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">{t.payMethodTxLabel}</label>
-                  <select 
+                  <select
                     value={payTxMethodKey}
                     onChange={(e) => setPayTxMethodKey(e.target.value)}
-                    className={`w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none border ${inputBg}`}>
+                    className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}
+                  >
                     <option value="transfer">{t.methods.transfer}</option>
                     <option value="ewallet">{t.methods.ewallet}</option>
                     <option value="cash">{t.methods.cash}</option>
@@ -6725,175 +5197,152 @@ const getDynamicTierTexts = (targetCurr) => {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1">{t.payDateLabel}</label>
-                    <input 
-                      type="date" 
+                    <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5" /> {t.payDateLabel}
+                    </label>
+                    <input
+                      type="date"
                       value={payCustomDate}
-                      onChange={(e) => {
-                        const newDate = e.target.value;
-                        setPayCustomDate(newDate);
-                        const recalculated = calculateLateStatus(selectedDebtForPay, newDate);
-                        const rem = Math.max(recalculated.effectiveTotal - (selectedDebtForPay.totalPaidAmount || 0), 0);
-                        const baseInst = selectedDebtForPay.installmentAmount || (selectedDebtForPay.amount / (selectedDebtForPay.installmentCount || 1));
-                        const autoAmt = selectedDebtForPay.isInstallment 
-                          ? Math.min(baseInst + (recalculated.pendingLateFee || 0), rem)
-                          : rem;
-                        setPayCustomAmount(Math.round(autoAmt).toString());
-                      }}
-                      className={`w-full rounded-xl px-3 py-2 text-xs focus:outline-none border ${inputBg}`}
+                      onChange={(e) => setPayCustomDate(e.target.value)}
+                      className={`w-full rounded-xl p-2 text-xs border ${inputBg}`}
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1">{t.payTimeLabel}</label>
-                    <input 
-                      type="time" 
+                    <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5" /> {t.payTimeLabel}
+                    </label>
+                    <input
+                      type="time"
                       value={payCustomTime}
                       onChange={(e) => setPayCustomTime(e.target.value)}
-                      className={`w-full rounded-xl px-3 py-2 text-xs focus:outline-none border ${inputBg}`}
+                      className={`w-full rounded-xl p-2 text-xs border ${inputBg}`}
                     />
                   </div>
                 </div>
 
+                {selectedDebtForPay.isInstallment && (
+                  <button
+                    type="button"
+                    onClick={() => handleProcessPayment('one_term')}
+                    className={`w-full py-2.5 rounded-xl font-bold text-xs border transition flex items-center justify-center gap-2 ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'}`}>
+                    {t.payOneTerm} ({getCurrencySymbolDynamic(selectedDebtForPay.currency || managerCurrency)} {Math.round((selectedDebtForPay.installmentAmount || (selectedDebtForPay.amount / (selectedDebtForPay.installmentCount || 1))) + (payModalLateInfo.pendingLateFee || 0)).toLocaleString()})
+                  </button>
+                )}
+
                 <div className="flex gap-2 pt-2">
-                  <button 
+                  <button
+                    type="button"
+                    onClick={() => setIsPayModalOpen(false)}
+                    className={`flex-1 py-2.5 rounded-xl font-medium text-xs ${isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'}`}>
+                    {t.cancel}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleProcessPayment('custom')}
-                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-semibold text-sm transition">
+                    className={`flex-1 py-2.5 bg-gradient-to-r ${themeStyle.gradientBtn} text-white rounded-xl font-bold text-xs shadow-lg`}>
                     {t.submitPay}
                   </button>
-                  {selectedDebtForPay.isInstallment && (
-                    <button 
-                      onClick={() => handleProcessPayment('one_term')}
-                      className={`px-4 py-2.5 ${themeStyle.bgAccent} text-white rounded-xl font-semibold text-sm transition`}>
-                      {t.payOneTerm}
-                    </button>
-                  )}
                 </div>
+              </div>
+
+              <div className={`mt-5 pt-4 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+                <h4 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-1.5">
+                  <History className="w-3.5 h-3.5 text-emerald-400" /> {t.paymentHistoryTitle}
+                </h4>
+                {(!selectedDebtForPay.paymentHistory || selectedDebtForPay.paymentHistory.length === 0) ? (
+                  <p className="text-xs text-slate-500 italic">{t.noHistoryYet}</p>
+                ) : (
+                  <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
+                    {selectedDebtForPay.paymentHistory.map((log) => {
+                      const logDetail = formatHistoryLogSummary(log, selectedDebtForPay.currency || managerCurrency, selectedDebtForPay);
+                      const hasLateDetail = Number(log.daysLate) > 0 || Number(log.lateFeeCharged) > 0;
+                      return (
+                        <div key={log.id} className={`flex flex-col p-2.5 rounded-lg border text-xs gap-1 ${bgInnerBox}`}>
+                          <div className="flex justify-between items-center gap-2">
+                            <span className="text-slate-400 font-medium">{log.timestamp}</span>
+                            <span className="font-bold text-emerald-400 shrink-0">+{getCurrencySymbolDynamic(selectedDebtForPay.currency || managerCurrency)} {log.amount.toLocaleString()}</span>
+                          </div>
+                          {logDetail && (
+                            <div className={`text-[11px] font-medium ${hasLateDetail ? 'text-rose-400' : 'text-slate-400'}`}>
+                              {logDetail}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           </div>
         );
       })()}
 
-      {/* MODAL: Manajemen Kategori */}
+      {/* MODAL: Manage Categories */}
       {isCategoryModalOpen && (
-        <div className="fixed inset-0 z-[999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className={`border rounded-2xl w-full max-w-md p-6 shadow-2xl ${modalBg}`}>
-            <h2 className={`text-xl font-bold mb-4 ${themeStyle.textAccent}`}>{t.catManagerTitle}</h2>
+        <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 pb-24 sm:pb-6 overflow-y-auto">
+          <div className={`border rounded-2xl w-full max-w-md p-5 sm:p-6 shadow-2xl my-auto max-h-[82vh] overflow-y-auto ${modalBg}`}>
+            <h3 className={`text-lg font-bold mb-4 ${themeStyle.textAccent}`}>{t.catManagerTitle}</h3>
             <div className="flex gap-2 mb-4">
-              <input 
-                type="text" 
-                placeholder={t.newCatPlaceholder}
-                value={newCatName}
-                onChange={(e) => setNewCatName(e.target.value)}
-                className={`flex-1 rounded-xl px-3 py-2 text-sm focus:outline-none border ${inputBg}`}
-              />
-              <button 
-                onClick={() => {
-                  if (newCatName && !categories.includes(newCatName)) {
-                    const updatedCats = [...categories, newCatName];
-                    setCategories(updatedCats);
-                    if (!category) setCategory(newCatName);
-                    setNewCatName('');
-                  }
-                }}
-                className={`px-4 py-2 ${themeStyle.bgAccent} text-white rounded-xl text-sm font-semibold`}>
+              <input type="text" placeholder={t.newCatPlaceholder} value={newCatName} onChange={(e) => setNewCatName(e.target.value)} className={`flex-1 rounded-xl px-3 py-2 text-sm border ${inputBg}`} />
+              <button onClick={() => { if (newCatName.trim()) { setCategories([...categories, newCatName.trim()]); setNewCatName(''); } }} className={`px-4 py-2 ${themeStyle.bgAccent} text-white rounded-xl font-bold text-sm`}>
                 {t.add}
               </button>
             </div>
-            <div className="space-y-2 max-h-60 overflow-y-auto mb-6">
+            <div className="space-y-2 max-h-60 overflow-y-auto">
               {categories.map((cat, idx) => (
-                <div key={idx} className={`flex justify-between items-center px-3 py-2 rounded-xl border ${bgInnerBox}`}>
-                  <span className="text-sm">{cat}</span>
-                  {categories.length > 1 && (
-                    <button 
-                      onClick={() => setCategories(categories.filter(c => c !== cat))}
-                      className="text-rose-400 hover:text-rose-300 text-xs">
-                      {t.delete}
-                    </button>
-                  )}
+                <div key={idx} className={`flex justify-between items-center p-2.5 rounded-xl border ${bgInnerBox}`}>
+                  <span className="text-sm font-medium">{cat}</span>
+                  <button onClick={() => setCategories(categories.filter((_, i) => i !== idx))} className="text-rose-400 hover:text-rose-300 p-1"><Trash2 className="w-4 h-4" /></button>
                 </div>
               ))}
             </div>
-            <div className="flex justify-end">
-              <button 
-                onClick={() => setIsCategoryModalOpen(false)}
-                className={`px-4 py-2 rounded-xl text-sm font-medium ${isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'}`}>
-                {t.close}
-              </button>
-            </div>
+            <button onClick={() => setIsCategoryModalOpen(false)} className={`mt-5 w-full py-2.5 rounded-xl font-medium text-sm ${isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'}`}>
+              {t.close}
+            </button>
           </div>
         </div>
       )}
 
-      {/* MODAL: Manajemen Jenis Pinjaman */}
+      {/* MODAL: Manage Loan Types */}
       {isTypeModalOpen && (
-        <div className="fixed inset-0 z-[999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className={`border rounded-2xl w-full max-w-md p-6 shadow-2xl ${modalBg}`}>
-            <h2 className="text-xl font-bold text-emerald-400 mb-4">{t.typeManagerTitle}</h2>
+        <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 pb-24 sm:pb-6 overflow-y-auto">
+          <div className={`border rounded-2xl w-full max-w-md p-5 sm:p-6 shadow-2xl my-auto max-h-[82vh] overflow-y-auto ${modalBg}`}>
+            <h3 className="text-lg font-bold text-emerald-400 mb-4">{t.typeManagerTitle}</h3>
             <div className="flex gap-2 mb-4">
-              <input 
-                type="text" 
-                placeholder={t.newTypePlaceholder}
-                value={newTypeName}
-                onChange={(e) => setNewTypeName(e.target.value)}
-                className={`flex-1 rounded-xl px-3 py-2 text-sm focus:outline-none border ${inputBg}`}
-              />
-              <button 
-                onClick={() => {
-                  if (newTypeName && !loanTypes.includes(newTypeName)) {
-                    const updatedTypes = [...loanTypes, newTypeName];
-                    setLoanTypes(updatedTypes);
-                    if (!type) setType(newTypeName);
-                    setNewTypeName('');
-                  }
-                }}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold">
+              <input type="text" placeholder={t.newTypePlaceholder} value={newTypeName} onChange={(e) => setNewTypeName(e.target.value)} className={`flex-1 rounded-xl px-3 py-2 text-sm border ${inputBg}`} />
+              <button onClick={() => { if (newTypeName.trim()) { setLoanTypes([...loanTypes, newTypeName.trim()]); setNewTypeName(''); } }} className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold text-sm">
                 {t.add}
               </button>
             </div>
-            <div className="space-y-2 max-h-60 overflow-y-auto mb-6">
-              {loanTypes.map((item, idx) => (
-                <div key={idx} className={`flex justify-between items-center px-3 py-2 rounded-xl border ${bgInnerBox}`}>
-                  <span className="text-sm">{item}</span>
-                  {loanTypes.length > 1 && (
-                    <button 
-                      onClick={() => setLoanTypes(loanTypes.filter(type => type !== item))}
-                      className="text-rose-400 hover:text-rose-300 text-xs">
-                      {t.delete}
-                    </button>
-                  )}
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {loanTypes.map((lt, idx) => (
+                <div key={idx} className={`flex justify-between items-center p-2.5 rounded-xl border ${bgInnerBox}`}>
+                  <span className="text-sm font-medium">{lt}</span>
+                  <button onClick={() => setLoanTypes(loanTypes.filter((_, i) => i !== idx))} className="text-rose-400 hover:text-rose-300 p-1"><Trash2 className="w-4 h-4" /></button>
                 </div>
               ))}
             </div>
-            <div className="flex justify-end">
-              <button 
-                onClick={() => setIsTypeModalOpen(false)}
-                className={`px-4 py-2 rounded-xl text-sm font-medium ${isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'}`}>
-                {t.close}
-              </button>
-            </div>
-          </div>
-        </div>
-        
-      )}{/* TOAST NOTIFICATION (Pengganti alert() native agar mulus di Android/Capacitor) */}
-      {toastInfo && (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[1200] max-w-md w-[92%] animate-fade-in">
-          <div
-            className={`flex items-center justify-between gap-3 px-4 py-3 rounded-xl shadow-2xl border text-xs font-semibold backdrop-blur-md ${
-              toastInfo.type === 'error'
-                ? 'bg-rose-950/95 border-rose-500/60 text-rose-100'
-                : 'bg-emerald-950/95 border-emerald-500/60 text-emerald-100'
-            }`}
-          >
-            <span className="leading-relaxed">{toastInfo.message}</span>
-            <button
-              type="button"
-              onClick={() => setToastInfo(null)}
-              className="text-slate-300 hover:text-white shrink-0"
-            >
-              <X className="w-4 h-4" />
+            <button onClick={() => setIsTypeModalOpen(false)} className={`mt-5 w-full py-2.5 rounded-xl font-medium text-sm ${isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'}`}>
+              {t.close}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* TOAST NOTIFIKASI */}
+      {toastInfo && (
+        <div
+          className={`fixed bottom-24 sm:bottom-6 left-1/2 -translate-x-1/2 z-[1200] px-4 py-3 rounded-xl shadow-2xl border text-xs sm:text-sm font-semibold flex items-center gap-2.5 max-w-[92vw] ${
+            toastInfo.type === 'error'
+              ? 'bg-rose-950/95 border-rose-700 text-rose-100'
+              : toastInfo.type === 'info'
+              ? 'bg-sky-950/95 border-sky-700 text-sky-100'
+              : 'bg-emerald-950/95 border-emerald-700 text-emerald-100'
+          }`}
+        >
+          <span>{toastInfo.type === 'error' ? '⚠️' : toastInfo.type === 'info' ? 'ℹ️' : '✅'}</span>
+          <span>{toastInfo.message}</span>
         </div>
       )}
     </div>
