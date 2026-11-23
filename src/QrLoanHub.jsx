@@ -84,6 +84,7 @@ const QR_HUB_I18N = {
     posterSectionTitle: 'Teks Poster QR (Ikut Tercetak Saat Download PNG):',
     posterTopLabel: 'Judul Atas QR:',
     posterBottomLabel: 'Catatan / Keterangan Bawah QR:',
+    posterLinkLabel: 'Teks Instruksi Link Manual (Ikut Tercetak + URL):',
     paymentAccLabel: 'Rekening / E-Wallet Tujuan Pembayaran (Otomatis Tersimpan & Terisi Saat ACC):',
     save: 'Simpan',
     copyLink: 'Salin Link',
@@ -585,6 +586,13 @@ export default function QrLoanHub({
       'Isi formulir online & pantau status pencairan langsung dari HP Anda'
     );
   });
+  const [qrPosterLinkText, setQrPosterLinkText] = useState(() => {
+    return (
+      localStorage.getItem('wgen_qr_poster_link_text') ||
+      'Atau ketik link di bawah ini di browser HP Anda:'
+    );
+  });
+
   const [loadingQr, setLoadingQr] = useState(false);
   const [copiedQrLink, setCopiedQrLink] = useState(false);
 
@@ -1425,13 +1433,14 @@ export default function QrLoanHub({
     }
   };
 
-  // === DOWNLOAD POSTER QR CODE + TEKS CUSTOM ===
+  // === DOWNLOAD POSTER QR CODE + TEKS CUSTOM + LINK MANUAL ===
   const handleDownloadQrPng = () => {
     const qrCanvas = document.getElementById('wgen-loan-qr-canvas');
     if (!qrCanvas) return;
 
+    const fullApplyUrl = `${PUBLIC_WEB_ORIGIN}/apply?token=${qrLinkData?.token || ''}`;
     const posterWidth = 720;
-    const posterHeight = 940;
+    const posterHeight = 1040; // Tinggi ditambah sedikit agar muat teks link manual
     const exportCanvas = document.createElement('canvas');
     exportCanvas.width = posterWidth;
     exportCanvas.height = posterHeight;
@@ -1476,18 +1485,35 @@ export default function QrLoanHub({
     ctx.font = 'bold 22px monospace';
     ctx.fillText(`KODE: ${qrLinkData?.token || '-'}`, posterWidth / 2, textY);
 
-    textY += 42;
+    textY += 40;
     ctx.fillStyle = '#e2e8f0';
-    ctx.font = '22px sans-serif';
+    ctx.font = '21px sans-serif';
     const subLines = wrapCanvasText(ctx, qrPosterSubtitle || '', posterWidth - 110);
-    for (const line of subLines.slice(0, 3)) {
+    for (const line of subLines.slice(0, 2)) {
       ctx.fillText(line, posterWidth / 2, textY);
-      textY += 32;
+      textY += 30;
+    }
+
+    // === BAGIAN BARU: INSTRUKSI KETIK LINK MANUAL + URL ===
+    if (qrPosterLinkText && qrPosterLinkText.trim() !== '') {
+      textY += 18;
+      ctx.fillStyle = '#fbbf24'; // Warna kuning emas agar menonjol
+      ctx.font = 'bold 19px sans-serif';
+      const linkPromptLines = wrapCanvasText(ctx, qrPosterLinkText.trim(), posterWidth - 110);
+      for (const line of linkPromptLines.slice(0, 2)) {
+        ctx.fillText(line, posterWidth / 2, textY);
+        textY += 26;
+      }
+
+      // Cetak URL lengkapnya
+      ctx.fillStyle = '#34d399';
+      ctx.font = 'bold 18px monospace';
+      ctx.fillText(fullApplyUrl, posterWidth / 2, textY + 4);
     }
 
     ctx.fillStyle = '#94a3b8';
     ctx.font = '18px sans-serif';
-    ctx.fillText('WGen Note • Sistem Pengajuan & Kontrak Digital', posterWidth / 2, posterHeight - 52);
+    ctx.fillText('• Sistem Pengajuan & Kontrak Digital •', posterWidth / 2, posterHeight - 50);
 
     const link = document.createElement('a');
     link.download = `Poster-QR-Pinjaman-${qrLinkData?.token || 'WGen'}.png`;
@@ -2752,11 +2778,33 @@ export default function QrLoanHub({
                         setQrPosterSubtitle(e.target.value);
                         localStorage.setItem('wgen_qr_poster_subtitle', e.target.value);
                       }}
-                      placeholder="Contoh: Hubungi WA 0812xxx jika butuh bantuan..."
+                      placeholder="Contoh: Hubungi ..."
                       className={`w-full px-3 py-1.5 rounded-lg text-xs border ${effectiveInputBg}`}
                     />
                   </div>
+
+                  <div>
+                    <label className={`text-[10px] block mb-1 font-medium ${textSecondary}`}>
+                      {t.posterLinkLabel || 'Teks Instruksi Link Manual (Ikut Tercetak + URL):'}
+                    </label>
+                    <input
+                      type="text"
+                      value={qrPosterLinkText}
+                      onChange={(e) => {
+                        setQrPosterLinkText(e.target.value);
+                        localStorage.setItem('wgen_qr_poster_link_text', e.target.value);
+                      }}
+                      placeholder="Contoh: Atau ketik link di bawah ini di browser HP Anda:"
+                      className={`w-full px-3 py-1.5 rounded-lg text-xs border ${effectiveInputBg}`}
+                    />
+                    <span className={`text-[10px] block mt-1 font-mono ${isDarkMode ? 'text-emerald-400/80' : 'text-emerald-700'}`}>
+                      Otomatis diikuti link: {PUBLIC_WEB_ORIGIN}/apply?token={qrLinkData.token}
+                    </span>
+                  </div>                    
+
+
                 </div>
+                
 
                 <div className="w-full text-left space-y-1.5 pt-1">
                   <label className={`text-[11px] font-semibold block ${textSecondary}`}>
@@ -2765,7 +2813,7 @@ export default function QrLoanHub({
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      placeholder="Contoh: BCA 1234567890 a.n Budi / Dana 0812xxx..."
+                      placeholder="Contoh: ...."
                       value={qrPaymentAccount}
                       onChange={(e) => {
                         const val = e.target.value;
