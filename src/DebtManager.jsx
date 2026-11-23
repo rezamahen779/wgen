@@ -3953,18 +3953,20 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
           </button>
 
           <QrLoanHub
-            managerCurrency={managerCurrency}
-            liveRates={liveRates}
-            themeStyle={themeStyle}
-            modalBg={modalBg}
-            bgInnerBox={bgInnerBox}
-            inputBg={inputBg}
-            debts={debts}
-            onApproveApplication={handleApproveApplication}
-            onVerifiedInstallmentTransfer={handleApplyVerifiedTransferToDebt}
-            onMarkApplicationApprovedRef={markQrAppApprovedRef}
-            showToast={showToast}
-          />
+         language={language}
+         isDarkMode={isDarkMode}
+         managerCurrency={managerCurrency}
+         liveRates={liveRates}
+         themeStyle={themeStyle}
+         modalBg={modalBg}
+         bgInnerBox={bgInnerBox}
+         inputBg={inputBg}
+         debts={debts}
+         onApproveApplication={handleApproveApplication}
+         onVerifiedInstallmentTransfer={handleApplyVerifiedTransferToDebt}
+         onMarkApplicationApprovedRef={markQrAppApprovedRef}
+         showToast={showToast}
+       />
         </div>
       </div>
 

@@ -60,9 +60,10 @@ const DEFAULT_HOTLINE_CONFIG = {
 };
 
 export default function QrLoanHub({
+  isDarkMode = true,
   managerCurrency,
   liveRates,
-  themeStyle,
+  themeStyle, 
   modalBg,
   bgInnerBox,
   inputBg,
@@ -1183,14 +1184,22 @@ export default function QrLoanHub({
         onClick={() => handleFeatureAccessRequest('open_qr')}
         className={`px-3.5 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
           qrFeatureEnabled
-            ? 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/30 text-emerald-400'
-            : 'bg-slate-800/70 hover:bg-slate-800 border-slate-700 text-slate-400'
+            ? isDarkMode
+              ? 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/40 text-emerald-300'
+              : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-800 shadow-xs'
+            : isDarkMode
+            ? 'bg-slate-800/90 hover:bg-slate-800 border-slate-700 text-slate-300'
+            : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700'
         }`}
       >
         <QrCode className="w-4 h-4" />
         <span>QR Pengajuan</span>
         {!qrFeatureEnabled && (
-          <span className="px-1.5 py-0.5 text-[9px] rounded bg-slate-700 text-slate-300">
+          <span
+            className={`px-1.5 py-0.5 text-[9px] font-bold rounded ${
+              isDarkMode ? 'bg-slate-700 text-slate-200' : 'bg-slate-300 text-slate-800'
+            }`}
+          >
             Off
           </span>
         )}
@@ -1201,14 +1210,18 @@ export default function QrLoanHub({
         onClick={() => handleFeatureAccessRequest('open_inbox')}
         className={`relative px-3.5 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
           qrFeatureEnabled
-            ? 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/30 text-amber-400'
-            : 'bg-slate-800/70 hover:bg-slate-800 border-slate-700 text-slate-400'
+            ? isDarkMode
+              ? 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/40 text-amber-300'
+              : 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-800 shadow-xs'
+            : isDarkMode
+            ? 'bg-slate-800/90 hover:bg-slate-800 border-slate-700 text-slate-300'
+            : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700'
         }`}
       >
         <Inbox className="w-4 h-4" />
         <span>Pengajuan Masuk</span>
         {qrFeatureEnabled && incomingApps.length > 0 && (
-          <span className="px-1.5 py-0.5 text-[10px] font-extrabold rounded-full bg-amber-400 text-slate-950">
+          <span className="px-1.5 py-0.5 text-[10px] font-extrabold rounded-full bg-amber-500 text-slate-950">
             {incomingApps.length}
           </span>
         )}
@@ -1219,8 +1232,12 @@ export default function QrLoanHub({
         onClick={() => handleFeatureAccessRequest('open_drop_proofs')}
         className={`relative px-3.5 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
           qrFeatureEnabled
-            ? 'bg-sky-500/15 hover:bg-sky-500/25 border-sky-500/30 text-sky-400'
-            : 'bg-slate-800/70 hover:bg-slate-800 border-slate-700 text-slate-400'
+            ? isDarkMode
+              ? 'bg-sky-500/15 hover:bg-sky-500/25 border-sky-500/40 text-sky-300'
+              : 'bg-sky-50 hover:bg-sky-100 border-sky-300 text-sky-800 shadow-xs'
+            : isDarkMode
+            ? 'bg-slate-800/90 hover:bg-slate-800 border-slate-700 text-slate-300'
+            : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700'
         }`}
       >
         <PackageCheck className="w-4 h-4" />
@@ -1229,8 +1246,10 @@ export default function QrLoanHub({
           <span
             className={`px-1.5 py-0.5 text-[10px] font-extrabold rounded-full ${
               pendingDropCount > 0
-                ? 'bg-sky-400 text-slate-950'
-                : 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/40'
+                ? 'bg-sky-500 text-white'
+                : isDarkMode
+                ? 'bg-emerald-500/30 text-emerald-200 border border-emerald-500/40'
+                : 'bg-emerald-600 text-white'
             }`}
           >
             {pendingDropCount > 0 ? pendingDropCount : dropProofList.length}
@@ -1243,14 +1262,18 @@ export default function QrLoanHub({
         onClick={() => handleFeatureAccessRequest('open_hotline')}
         className={`relative px-3.5 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
           qrFeatureEnabled
-            ? 'bg-teal-500/15 hover:bg-teal-500/25 border-teal-500/30 text-teal-300'
-            : 'bg-slate-800/70 hover:bg-slate-800 border-slate-700 text-slate-400'
+            ? isDarkMode
+              ? 'bg-teal-500/15 hover:bg-teal-500/25 border-teal-500/40 text-teal-300'
+              : 'bg-teal-50 hover:bg-teal-100 border-teal-300 text-teal-800 shadow-xs'
+            : isDarkMode
+            ? 'bg-slate-800/90 hover:bg-slate-800 border-slate-700 text-slate-300'
+            : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700'
         }`}
       >
         <Headphones className="w-4 h-4" />
         <span>Hotline</span>
         {qrFeatureEnabled && hotlineConfig.enabled && hotlineConfig.phone && (
-          <span className="w-2 h-2 rounded-full bg-emerald-400" />
+          <span className="w-2 h-2 rounded-full bg-emerald-500" />
         )}
       </button>
 
@@ -1592,13 +1615,13 @@ export default function QrLoanHub({
       {showDropProofModal && (
         <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className={`border rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-5 space-y-4 shadow-2xl ${modalBg}`}>
-            <div className="flex items-center justify-between gap-2 border-b border-slate-700/60 pb-3">
+            <div className={`flex items-center justify-between gap-2 border-b pb-3 ${isDarkMode ? 'border-slate-700/60' : 'border-slate-200'}`}>
               <div>
-                <h3 className="text-base font-bold flex items-center gap-2 text-sky-400">
+                <h3 className={`text-base font-bold flex items-center gap-2 ${isDarkMode ? 'text-sky-400' : 'text-sky-700'}`}>
                   <PackageCheck className="w-5 h-5" /> Bukti Pengiriman / Drop Jaminan ({dropProofList.length})
                 </h3>
                 {lastRefreshedAt && (
-                  <span className="text-[10px] text-slate-400">
+                  <span className={`text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                     Terakhir diperbarui: {lastRefreshedAt.toLocaleTimeString('id-ID')}
                   </span>
                 )}
@@ -1609,7 +1632,11 @@ export default function QrLoanHub({
                   type="button"
                   disabled={loadingDropProofs}
                   onClick={() => loadQrApplicationsAndReports('', true)}
-                  className="px-2.5 py-1.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/35 text-sky-300 text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50 transition"
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50 transition ${
+                    isDarkMode
+                      ? 'bg-sky-500/15 hover:bg-sky-500/25 border-sky-500/35 text-sky-300'
+                      : 'bg-sky-50 hover:bg-sky-100 border-sky-300 text-sky-700'
+                  }`}
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${loadingDropProofs ? 'animate-spin' : ''}`} />
                   <span>{loadingDropProofs ? 'Memuat...' : 'Refresh'}</span>
@@ -1618,7 +1645,7 @@ export default function QrLoanHub({
                 <button
                   type="button"
                   onClick={() => setShowDropProofModal(false)}
-                  className="text-slate-400 hover:text-white p-1"
+                  className={`p-1 ${isDarkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`}
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1626,18 +1653,22 @@ export default function QrLoanHub({
             </div>
 
             {loadingDropProofs && dropProofList.length === 0 ? (
-              <div className="py-10 text-center text-xs text-sky-400 animate-pulse">
+              <div className={`py-10 text-center text-xs animate-pulse ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>
                 Memuat bukti drop jaminan masuk...
               </div>
             ) : dropProofList.length === 0 ? (
               <div className="py-10 text-center space-y-2">
-                <div className="text-xs text-slate-400">
+                <div className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
                   Belum ada bukti pengiriman / drop barang jaminan yang diterima atau dikirim debitur.
                 </div>
                 <button
                   type="button"
                   onClick={() => loadQrApplicationsAndReports('', true)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-400 text-[11px] font-semibold inline-flex items-center gap-1.5"
+                  className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1.5 ${
+                    isDarkMode
+                      ? 'bg-slate-800 hover:bg-slate-700 text-sky-400'
+                      : 'bg-slate-100 hover:bg-slate-200 text-sky-700 border border-slate-300'
+                  }`}
                 >
                   <RefreshCw className="w-3 h-3" /> Cek Ulang Sekarang
                 </button>
@@ -1653,14 +1684,14 @@ export default function QrLoanHub({
                     >
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
-                          <div className="font-bold text-sm text-white">
+                          <div className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
                             {drop.borrower_name || 'Debitur'}
                           </div>
-                          <div className="text-[11px] font-mono text-emerald-400">
+                          <div className={`text-[11px] font-mono ${isDarkMode ? 'text-emerald-400' : 'text-emerald-700'}`}>
                             No. Pengajuan: {drop.application_id}
                           </div>
                           {drop.borrower_phone && (
-                            <div className="text-[11px] text-slate-400">
+                            <div className={`text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
                               HP: {drop.borrower_phone}
                             </div>
                           )}
@@ -1669,48 +1700,64 @@ export default function QrLoanHub({
                         <span
                           className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
                             isVerified
-                              ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                              : 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                              ? isDarkMode
+                                ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                                : 'bg-emerald-100 border-emerald-300 text-emerald-800'
+                              : isDarkMode
+                              ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                              : 'bg-amber-100 border-amber-300 text-amber-800'
                           }`}
                         >
                           {isVerified ? '✓ Bukti Tersimpan & Diverifikasi' : 'Menunggu Verifikasi Kreditur'}
                         </span>
                       </div>
 
-                      <div className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 space-y-1">
+                      <div
+                        className={`p-2.5 rounded-lg border space-y-1 ${
+                          isDarkMode ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                        }`}
+                      >
                         <div>
-                          <span className="text-slate-400">Unit Jaminan: </span>
-                          <span className="text-slate-200 font-semibold">
+                          <span className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>Unit Jaminan: </span>
+                          <span className={`font-semibold ${isDarkMode ? 'text-slate-200' : 'text-slate-900'}`}>
                             {drop.collateral_desc || '-'}
                           </span>
                         </div>
                         {drop.drop_note && (
                           <div>
-                            <span className="text-slate-400">Keterangan Drop: </span>
-                            <span className="text-sky-300 font-medium">{drop.drop_note}</span>
+                            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>Keterangan Drop: </span>
+                            <span className={`font-medium ${isDarkMode ? 'text-sky-300' : 'text-sky-700'}`}>
+                              {drop.drop_note}
+                            </span>
                           </div>
                         )}
                       </div>
 
                       {drop.proof_image && (
                         <div className="space-y-1">
-                          <span className="text-[11px] text-slate-400 block">
+                          <span className={`text-[11px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
                             Lampiran Foto Bukti Drop / Jaminan:
                           </span>
                           <img
                             src={drop.proof_image}
                             alt="Bukti Drop Jaminan"
-                            className="w-full max-h-60 object-contain rounded-lg border border-slate-700 bg-black"
+                            className={`w-full max-h-60 object-contain rounded-lg border ${
+                              isDarkMode ? 'border-slate-700 bg-black' : 'border-slate-300 bg-slate-100'
+                            }`}
                           />
                         </div>
                       )}
 
-                      <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-700/50">
+                      <div className={`flex flex-wrap items-center justify-end gap-2 pt-2 border-t ${isDarkMode ? 'border-slate-700/50' : 'border-slate-200'}`}>
                         {drop.proof_image && (
                           <button
                             type="button"
                             onClick={() => handleDownloadDropProofImage(drop)}
-                            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold flex items-center gap-1.5"
+                            className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 ${
+                              isDarkMode
+                                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                                : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300'
+                            }`}
                           >
                             <Download className="w-3.5 h-3.5" />
                             <span>Unduh Bukti</span>
