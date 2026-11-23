@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Plus, Search, Trash2, Edit2, Camera, Download,
-  CheckSquare, Square, FileText, User, Landmark, Calendar, AlertCircle, Percent, CreditCard, Wallet, Banknote, Shuffle, Coins, Phone, X, Clock, History, Gift, ChevronDown, ChevronUp, IdCard, UserCheck, AlertTriangle, Bell, Copy, Check, MapPin, Fingerprint, PenTool
+  Plus, Search, Trash2, Edit2, Download,
+  CheckSquare, Square, User, Landmark, Calendar, AlertCircle, CreditCard, Wallet, Banknote, Shuffle, Coins, Phone, Clock, History, Gift, ChevronDown, ChevronUp, IdCard, UserCheck, AlertTriangle, Bell, Copy, Check, MapPin
 } from 'lucide-react';
 
 import { turso } from './lib/turso';
@@ -9,6 +9,8 @@ import { auth } from './lib/firebase';
 import { convertCurrencyDynamic, fetchLiveExchangeRates, getCurrencySymbolDynamic } from './lib/currencyService';
 
 import QrLoanHub from './QrLoanHub';
+import DebtFormModal from './DebtFormModal';
+import { buildAdjustedContractHtml } from './utils/contractParser';
 
 export default function DebtManager({ language = 'id', themeProp, isDarkModeProp }) {
   // 1. Sinkronisasi Otomatis Tema Warna & Display Mode (Dark/Light) dari Sistem
@@ -68,41 +70,6 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
     if (value === undefined || value === null || value === '') return '';
     const cleanValue = String(value).replace(/\D/g, '');
     return cleanValue.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  };
-
-  // =========================================================================
-  // PENGUNCI BATAS NOMINAL PER KONTRAK (KONTRAK 1 MIKRO, KONTRAK 2, KONTRAK 3)
-  // =========================================================================
-  const getContractLimits = ({ isMicro = false, hasCollateral = false, currencyCode = 'IDR' }) => {
-    const cleanCurr = (currencyCode || 'IDR').toUpperCase();
-    const minIdr = isMicro ? 100000 : 300000;
-    const maxIdr = isMicro ? 500000 : hasCollateral ? 50000000 : 10999999;
-
-    const minVal =
-      cleanCurr === 'IDR'
-        ? minIdr
-        : Math.max(1, Math.round(convertCurrencyDynamic(minIdr, 'IDR', cleanCurr, liveRates)));
-
-    const maxVal =
-      cleanCurr === 'IDR'
-        ? maxIdr
-        : Math.max(minVal, Math.round(convertCurrencyDynamic(maxIdr, 'IDR', cleanCurr, liveRates)));
-
-    const contractLabel = isMicro
-      ? 'Kontrak 1 (Mikro • Tanpa Jaminan)'
-      : hasCollateral
-      ? 'Kontrak 3 (Dengan Jaminan)'
-      : 'Kontrak 2 (Tanpa Jaminan)';
-
-    return { minVal, maxVal, contractLabel, cleanCurr };
-  };
-
-  const clampContractAmount = (rawDigits, limits) => {
-    if (!rawDigits) return '';
-    const num = Number(rawDigits);
-    if (isNaN(num)) return '';
-    if (num > limits.maxVal) return String(limits.maxVal);
-    return String(num);
   };
 
   const getThemeClasses = (themeName) => {
@@ -1464,6 +1431,7 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
   const [searchQuery, setSearchQuery] = useState('');
 
   const [isDebtModalOpen, setIsDebtModalOpen] = useState(false);
+  const [editingDebtData, setEditingDebtData] = useState(null);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
 
@@ -1474,51 +1442,6 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
   const [payTxMethodKey, setPayTxMethodKey] = useState('transfer');
   const [payCustomDate, setPayCustomDate] = useState(new Date().toISOString().split('T')[0]);
   const [payCustomTime, setPayCustomTime] = useState(new Date().toTimeString().slice(0, 5));
-
-  const [currentDebtId, setCurrentDebtId] = useState(null);
-  const [name, setName] = useState('');
-  const [lenderName, setLenderName] = useState('');
-  const [debtorIdNo, setDebtorIdNo] = useState('');
-  const [creditorIdNo, setCreditorIdNo] = useState('');
-  const [debtorAddress, setDebtorAddress] = useState('');
-
-  const [category, setCategory] = useState(categories[0] || '');
-  const [type, setType] = useState(loanTypes[0] || '');
-  const [amount, setAmount] = useState('');
-  const [bonusPercent, setBonusPercent] = useState('0');
-  const [bonusType, setBonusType] = useState('bonus');
-  const [lateFeeMode, setLateFeeMode] = useState('auto');
-  const [lateFeePercent, setLateFeePercent] = useState('0');
-  const [debtCurrency, setDebtCurrency] = useState(managerCurrency);
-  const [borrowerPhone, setBorrowerPhone] = useState('');
-  const [emergencyPhone, setEmergencyPhone] = useState('');
-  const [collateral, setCollateral] = useState(false);
-  const [collateralDesc, setCollateralDesc] = useState('');
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-  const [dueDate, setDueDate] = useState('');
-  const [statusKey, setStatusKey] = useState('active');
-  const [image, setImage] = useState(null);
-
-  // State Gambar Cap Sidik Jari & Tanda Tangan
-  const [creditorFingerprint, setCreditorFingerprint] = useState(null);
-  const [creditorSignature, setCreditorSignature] = useState(null);
-  const [debtorFingerprint, setDebtorFingerprint] = useState(null);
-  const [debtorSignature, setDebtorSignature] = useState(null);
-
-  // 7 State Foto Khusus Halaman 4
-  const [photoIdDebtor, setPhotoIdDebtor] = useState('');
-  const [photoSelfieDebtor, setPhotoSelfieDebtor] = useState('');
-  const [photoSelfieIdDebtor, setPhotoSelfieIdDebtor] = useState('');
-  const [photoCollateral1, setPhotoCollateral1] = useState('');
-  const [photoCollateral2, setPhotoCollateral2] = useState('');
-  const [photoEtc1, setPhotoEtc1] = useState('');
-  const [photoEtc2, setPhotoEtc2] = useState('');
-
-  const [isInstallment, setIsInstallment] = useState(false);
-  const [installmentCount, setInstallmentCount] = useState('3');
-  const [paidInstallments, setPaidInstallments] = useState('0');
-  const [paymentMethodKey, setPaymentMethodKey] = useState('transfer');
-  const [paymentAccountInfo, setPaymentAccountInfo] = useState('');
 
   const [newCatName, setNewCatName] = useState('');
   const [newTypeName, setNewTypeName] = useState('');
@@ -1677,45 +1600,43 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
         ? Number(app.counter_principal_amount)
         : Number(app.requested_amount || '');
 
-    setCurrentDebtId(null);
-    setName(app.borrower_name || '');
-    setLenderName(
-      qrLinkData?.lender_name ||
+    setEditingDebtData({
+      id: null,
+      qrApplicationId: app.id,
+      name: app.borrower_name || '',
+      lenderName:
+        qrLinkData?.lender_name ||
         auth?.currentUser?.displayName ||
         localStorage.getItem('wgen_username') ||
-        ''
-    );
-    setDebtorIdNo(app.debtor_id || '');
-    setDebtorAddress(app.debtor_address || '');
-    setBorrowerPhone(app.borrower_phone || '');
-    setEmergencyPhone(app.emergency_phone || '');
-    setDebtCurrency(app.currency || managerCurrency || 'IDR');
-    setAmount(finalPrincipalAmount ? String(finalPrincipalAmount) : '');
+        '',
+      debtorIdNo: app.debtor_id || '',
+      debtorAddress: app.debtor_address || '',
+      borrowerPhone: app.borrower_phone || '',
+      emergencyPhone: app.emergency_phone || '',
+      currency: app.currency || managerCurrency || 'IDR',
+      principalAmount: finalPrincipalAmount || '',
+      bonusPercent: appliedReward,
+      bonusType: 'bonus',
+      lateFeeMode: isMicroApp ? 'micro' : 'auto',
+      paymentMethodKey: savedMethodKey,
+      paymentAccountInfo: savedAccountInfo,
+      startDate: todayStr,
+      dueDate: dueStr,
+      isInstallment: Number(app.is_installment) === 1,
+      installmentCount: months,
+      paidInstallments: 0,
+      collateral: Number(app.has_collateral) === 1,
+      collateralDesc: app.collateral_desc || '',
+      photoIdDebtor: app.photo_id || '',
+      photoSelfieDebtor: app.photo_selfie || '',
+      photoSelfieIdDebtor: app.photo_selfie_id || '',
+      photoCollateral1: app.photo_collateral_1 || '',
+      photoCollateral2: app.photo_collateral_2 || '',
+      debtorFingerprint: app.debtor_fingerprint || app.debtorFingerprint || '',
+      debtorSignature: app.debtor_signature || app.debtorSignature || ''
+    });
 
-    setBonusPercent(String(appliedReward));
-    setBonusType('bonus');
-    setLateFeeMode(isMicroApp ? 'micro' : 'auto');
-
-    setPaymentMethodKey(savedMethodKey);
-    setPaymentAccountInfo(savedAccountInfo);
-
-    setStartDate(todayStr);
-    setDueDate(dueStr);
-    setIsInstallment(Number(app.is_installment) === 1);
-    setInstallmentCount(String(months));
-    setPaidInstallments('0');
-    setCollateral(Number(app.has_collateral) === 1);
-    setCollateralDesc(app.collateral_desc || '');
-    setPhotoIdDebtor(app.photo_id || '');
-    setPhotoSelfieDebtor(app.photo_selfie || '');
-    setPhotoSelfieIdDebtor(app.photo_selfie_id || '');
-    setPhotoCollateral1(app.photo_collateral_1 || '');
-    setPhotoCollateral2(app.photo_collateral_2 || '');
-    setDebtorFingerprint(app.debtor_fingerprint || app.debtorFingerprint || '');
-    setDebtorSignature(app.debtor_signature || app.debtorSignature || '');
     setApprovedApplicationId(app.id);
-
-
     setIsDebtModalOpen(true);
   };
 
@@ -1738,48 +1659,46 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
     return `${y}-${m}-${d}`;
   };
 
-  const syncDueDateWithInstallments = (baseStartDate, countVal) => {
-    const months = parseInt(countVal, 10);
-    if (!baseStartDate || isNaN(months) || months < 1) return;
-    const targetDate = addMonthsSafely(baseStartDate, months);
-    if (targetDate) {
-      setDueDate(formatLocalDateStr(targetDate));
-    }
-  };
-
-  // Ekstrak nama Kota / Kabupaten secara otomatis dari alamat lengkap
+ // Ekstrak nama Kota / Prefektur / Provinsi dari alamat seluruh negara (ID, JP, EN, AR, CN)
   const extractCityFromAddress = (address) => {
     if (!address || typeof address !== 'string') return '';
     const cleaned = address.trim();
     if (!cleaned) return '';
 
-    const explicitMatch = cleaned.match(/\b(?:Kota|Kabupaten|Kab\.?)\s+([A-Za-z\s]+?)(?=,|$|\.|Kode\s*Pos|\d)/i);
-    if (explicitMatch && explicitMatch[1]) {
-      const prefix = /kota/i.test(explicitMatch[0]) ? 'Kota ' : 'Kab. ';
-      return `${prefix}${explicitMatch[1].trim()}`;
+    // 1. Format eksplisit Indonesia: Kota X / Kab. X
+    const idMatch = cleaned.match(/\b(?:Kota|Kabupaten|Kab\.?)\s+([A-Za-z\s]+?)(?=,|$|\.|Kode\s*Pos|\d)/i);
+    if (idMatch && idMatch[1]) {
+      const prefix = /kota/i.test(idMatch[0]) ? 'Kota ' : 'Kab. ';
+      return `${prefix}${idMatch[1].trim()}`;
     }
 
-    const knownCityMatch = cleaned.match(
-      /\b(Jakarta\s+(?:Pusat|Timur|Barat|Selatan|Utara)|Jakarta|Bogor|Depok|Tangerang\s+Selatan|Tangerang|Bekasi|Bandung|Semarang|Surabaya|Yogyakarta|Medan|Palembang|Makassar|Denpasar|Malang|Solo|Surakarta|Batam|Pekanbaru|Balikpapan|Samarinda|Banjarmasin|Pontianak|Manado|Cimahi|Sukabumi|Cirebon|Tasikmalaya|Serang|Cilegon|Karawang|Purwakarta|Subang|Garut|Cianjur|Sumedang|Indramayu|Majalengka|Kuningan)\b/i
-    );
-    if (knownCityMatch && knownCityMatch[1]) {
-      return knownCityMatch[1]
-        .trim()
-        .replace(/\s+/g, ' ')
-        .replace(/\b\w/g, (c) => c.toUpperCase());
+    // 2. Format Jepang / Mandarin: 東京都, 大阪府, 京都府, 北海道, 横浜市, 北京市, 上海市
+    const cjkMatch = cleaned.match(/([^\s,、0-9０-９]{2,6}[都道府県市区县])/);
+    if (cjkMatch && cjkMatch[1]) {
+      return cjkMatch[1];
     }
 
-    const parts = cleaned.split(',').map((s) => s.trim()).filter(Boolean);
+    // 3. Format koma internasional (misal: "Shibuya, Tokyo, Japan" atau "123 Main St, New York, NY")
+    const parts = cleaned
+      .split(/[,،、]/)
+      .map((s) => s.replace(/\b\d{3,}[-\s]?\d*\b/g, '').trim())
+      .filter(Boolean);
+
     if (parts.length >= 3) {
-      return parts[parts.length - 2].replace(/\d+/g, '').trim();
+      return parts[parts.length - 2];
     }
     if (parts.length === 2) {
-      return parts[1].replace(/\d+/g, '').trim();
+      return parts[0].length <= 25 ? parts[0] : parts[1];
+    }
+
+    // 4. Input satu baris singkat langsung berupa nama kota (misal: "Tokyo", "London", "Jakarta", "الرياض")
+    if (parts.length === 1 && parts[0].length <= 35) {
+      return parts[0];
     }
 
     return '';
   };
-
+  
   // Fungsi Perhitungan Denda Sesuai Aturan Micro, Tier A & Tier B (Total Maks Sama: 32,5%)
   const computeTieredPenalty = (principal, daysLate, currencyCode = 'IDR', mode = 'auto', manualPct = 0) => {
     if (daysLate <= 0 || principal <= 0) {
@@ -2202,88 +2121,22 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
     }
   }, [debts]);
 
-  const compressImageFile = (file, maxDim = 800, format = 'image/jpeg', quality = 0.72) => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
+  const handleSaveDebt = async (formData) => {
+    const {
+      id: formDebtId,
+      name, lenderName, debtorIdNo, creditorIdNo, debtorAddress,
+      category, type, amount, bonusPercent, bonusType,
+      lateFeeMode, lateFeePercent, debtCurrency,
+      borrowerPhone, emergencyPhone, collateral, collateralDesc,
+      startDate, dueDate, statusKey, image,
+      creditorFingerprint, creditorSignature, debtorFingerprint, debtorSignature,
+      photoIdDebtor, photoSelfieDebtor, photoSelfieIdDebtor,
+      photoCollateral1, photoCollateral2, photoEtc1, photoEtc2,
+      isInstallment, installmentCount, paidInstallments,
+      paymentMethodKey, paymentAccountInfo,
+      uploadedContractFileName, uploadedContractText
+    } = formData;
 
-          if (width > height && width > maxDim) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else if (height > maxDim) {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL(format, quality));
-        };
-        img.onerror = () => resolve(event.target.result);
-        img.src = event.target.result;
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const compressDocPhoto = (file, maxWidth = 900, quality = 0.72) => {
-    return new Promise((resolve) => {
-      if (!file) return resolve('');
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let { width, height } = img;
-          if (width > maxWidth) {
-            height = Math.round((height * maxWidth) / width);
-            width = maxWidth;
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', quality));
-        };
-        img.onerror = () => resolve(ev.target.result || '');
-        img.src = ev.target.result;
-      };
-      reader.onerror = () => resolve('');
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const handlePage4PhotoUpload = async (e, setter, isPortrait4x6 = false) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const compressed = await compressDocPhoto(file, isPortrait4x6 ? 650 : 950, 0.72);
-    setter(compressed);
-    e.target.value = '';
-  };
-
-  const handleImageCapture = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const compressed = await compressImageFile(file, 800, 'image/jpeg', 0.72);
-    setImage(compressed);
-  };
-
-  const handleAuthAssetUpload = async (e, setter) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const compressed = await compressImageFile(file, 320, 'image/png', 0.85);
-    setter(compressed);
-  };
-
-  const handleSaveDebt = async (e) => {
-    e.preventDefault();
     if (!name || !amount) {
       alert(t.fillRequired);
       return;
@@ -2297,8 +2150,8 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
     const totalInst = parseInt(installmentCount) || 1;
     const paidInst = parseInt(paidInstallments) || 0;
 
-    const existingDebt = currentDebtId
-      ? debts.find((d) => String(d.id) === String(currentDebtId))
+    const existingDebt = formDebtId
+      ? debts.find((d) => String(d.id) === String(formDebtId))
       : null;
 
     const wasPaidBefore = existingDebt && (
@@ -2384,7 +2237,7 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
 
     const isFullyPaid = statusKey === 'paid' || (finalPaidAmount >= totalAmt && totalAmt > 0);
     const finalStatusKey = isFullyPaid ? 'paid' : statusKey;
-    const newDebtId = currentDebtId ? String(currentDebtId) : String(Date.now());
+    const newDebtId = formDebtId ? String(formDebtId) : String(Date.now());
     const cleanedAccountInfo = paymentMethodKey === 'cash' ? '' : paymentAccountInfo;
     const selectedCategory = category || categories[0] || 'Pribadi';
     const nowIso = new Date().toISOString();
@@ -2438,12 +2291,14 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
       paymentMethodKey,
       paymentAccountInfo: cleanedAccountInfo,
       paymentHistory: initialHistory,
-      updatedAt: nowIso
+      updatedAt: nowIso,
+      uploadedContractFileName,
+      uploadedContractText,
     };
 
     let updatedDebts;
-    if (currentDebtId) {
-      updatedDebts = debts.map(d => String(d.id) === String(currentDebtId) ? debtData : d);
+    if (formDebtId) {
+      updatedDebts = debts.map(d => String(d.id) === String(formDebtId) ? debtData : d);
     } else {
       updatedDebts = [debtData, ...debts];
     }
@@ -2454,7 +2309,7 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
       console.warn("Storage quota warning:", storageErr);
     }
 
-    resetDebtForm();
+    setEditingDebtData(null);
     setIsDebtModalOpen(false);
 
     try {
@@ -2507,86 +2362,8 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
     }
   };
 
-  const resetDebtForm = () => {
-    setCurrentDebtId(null);
-    setName('');
-    setLenderName('');
-    setDebtorIdNo('');
-    setCreditorIdNo('');
-    setDebtorAddress('');
-    setCategory(categories[0] || '');
-    setType(loanTypes[0] || '');
-    setAmount('');
-    setBonusPercent('0');
-    setBonusType('bonus');
-    setLateFeeMode('auto');
-    setLateFeePercent('0');
-    setDebtCurrency(managerCurrency);
-    setBorrowerPhone('');
-    setEmergencyPhone('');
-    setCollateral(false);
-    setCollateralDesc('');
-    setStartDate(formatLocalDateStr(new Date()));
-    setDueDate('');
-    setStatusKey('active');
-    setImage(null);
-    setCreditorFingerprint(null);
-    setCreditorSignature(null);
-    setDebtorFingerprint(null);
-    setDebtorSignature(null);
-    setPhotoIdDebtor('');
-    setPhotoSelfieDebtor('');
-    setPhotoSelfieIdDebtor('');
-    setPhotoCollateral1('');
-    setPhotoCollateral2('');
-    setPhotoEtc1('');
-    setPhotoEtc2('');
-    setIsInstallment(false);
-    setInstallmentCount('3');
-    setPaidInstallments('0');
-    setPaymentMethodKey('transfer');
-    setPaymentAccountInfo('');
-  };
-
   const handleEditDebt = (debt) => {
-    setCurrentDebtId(debt.id);
-    setName(debt.name || '');
-    setLenderName(debt.lenderName || '');
-    setDebtorIdNo(debt.debtorIdNo || '');
-    setCreditorIdNo(debt.creditorIdNo || '');
-    setDebtorAddress(debt.debtorAddress || '');
-    setCategory(debt.category || categories[0] || '');
-    setType(debt.type || loanTypes[0] || '');
-    setAmount((debt.principalAmount || debt.amount).toString());
-    setBonusPercent((debt.bonusPercent || 0).toString());
-    setBonusType(debt.bonusType || 'bonus');
-    setLateFeeMode(debt.lateFeeMode || (Number(debt.lateFeePercent) > 0 ? 'manual' : 'auto'));
-    setLateFeePercent((debt.lateFeePercent || 0).toString());
-    setDebtCurrency(debt.currency || managerCurrency);
-    setBorrowerPhone(debt.borrowerPhone || '');
-    setEmergencyPhone(debt.emergencyPhone || '');
-    setCollateral(debt.collateral);
-    setCollateralDesc(debt.collateralDesc || '');
-    setStartDate(debt.startDate);
-    setDueDate(debt.dueDate || '');
-    setStatusKey(debt.statusKey || (debt.status === 'Lunas' ? 'paid' : 'active'));
-    setImage(debt.image);
-    setCreditorFingerprint(debt.creditorFingerprint || null);
-    setCreditorSignature(debt.creditorSignature || null);
-    setDebtorFingerprint(debt.debtorFingerprint || null);
-    setDebtorSignature(debt.debtorSignature || null);
-    setPhotoIdDebtor(debt.photoIdDebtor || '');
-    setPhotoSelfieDebtor(debt.photoSelfieDebtor || '');
-    setPhotoSelfieIdDebtor(debt.photoSelfieIdDebtor || '');
-    setPhotoCollateral1(debt.photoCollateral1 || '');
-    setPhotoCollateral2(debt.photoCollateral2 || '');
-    setPhotoEtc1(debt.photoEtc1 || '');
-    setPhotoEtc2(debt.photoEtc2 || '');
-    setIsInstallment(debt.isInstallment || false);
-    setInstallmentCount(debt.installmentCount ? debt.installmentCount.toString() : '3');
-    setPaidInstallments(debt.paidInstallments ? debt.paidInstallments.toString() : '0');
-    setPaymentMethodKey(debt.paymentMethodKey || 'transfer');
-    setPaymentAccountInfo(debt.paymentAccountInfo || '');
+    setEditingDebtData(debt);
     setIsDebtModalOpen(true);
   };
 
@@ -2931,6 +2708,119 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
       : debt.lateFeeMode === 'manual'
       ? `${c.p2_schemeManual} (${debt.lateFeePercent}% / 28d)`
       : c.p2_schemeAuto;
+
+    const defaultFiveClausesHtml = `
+      <div class="clause-section">
+        <div class="clause-title">${c.pasal1Title}</div>
+        <ol class="clause-list">
+          <li>${c.p1_1} <strong>${dSym} ${principalVal.toLocaleString()} (${dCurr})</strong></li>
+          <li>${c.p1_2} ${startDateFormatted} (${debt.startDate || '-'})</li>
+          <li>${c.p1_3} ${dueDateFormatted} ${debt.dueDate ? `(${debt.dueDate})` : ''}</li>
+          <li>${c.p1_4} ${tenorTextClause}</li>
+          <li>${c.p1_5}</li>
+          <li>${c.p1_6}</li>
+          <li>${c.p1_7} ${debt.bonusPercent || 0}% (${t.totalPlusLabel} ${rewardLabel}: <strong>${dSym} ${(debt.amount || 0).toLocaleString()}</strong>).</li>
+          <li>${c.p1_8}</li>
+        </ol>
+      </div>
+
+      <div class="clause-section">
+        <div class="clause-title">${c.pasal2Title}</div>
+        <p class="clause-text">${c.p2_intro}</p>
+        ${isMicroScheme ? `
+        <div class="tier-card" style="margin: 3px 0;">
+          <span class="tier-heading">${microSchemeTitle}</span>
+          <ul>
+            ${microSchemeItems.map((item) => `<li>${item}</li>`).join('')}
+          </ul>
+        </div>
+        ` : `
+        <div class="tier-grid">
+          <div class="tier-card">
+            <span class="tier-heading">${dynamicTiers.tierATitle}</span>
+            <ul>
+              <li>${dynamicTiers.tierA1}</li>
+              <li>${dynamicTiers.tierA2}</li>
+              <li>${dynamicTiers.tierA3}</li>
+            </ul>
+          </div>
+          <div class="tier-card">
+            <span class="tier-heading">${dynamicTiers.tierBTitle}</span>
+            <ul>
+              <li>${dynamicTiers.tierB1}</li>
+              <li>${dynamicTiers.tierB2}</li>
+              <li>${dynamicTiers.tierB3}</li>
+            </ul>
+          </div>
+        </div>
+        `}
+        <p class="clause-text">
+          ${c.p2_schemeNote} <strong>${activeSchemeLabel}</strong>.
+        </p>
+      </div>
+
+      <div class="clause-section">
+        <div class="clause-title">${hasCollateralFlag ? c.pasal3TitleWith : c.pasal3TitleWithout}</div>
+        ${hasCollateralFlag ? `
+        <ol class="clause-list">
+          <li>${c.p3_with_1}</li>
+          <li>${c.p3_with_2} <strong>${collateralClauseText}</strong>.</li>
+          <li>${c.p3_with_3}</li>
+          <li>${c.p3_with_4}</li>
+        </ol>
+        ` : `
+        <ol class="clause-list">
+          <li>${c.p3_without_1}</li>
+          <li>${c.p3_without_2}</li>
+          <li>${c.p3_without_3}</li>
+        </ol>
+        `}
+      </div>
+
+      <div class="clause-section">
+        <div class="clause-title">${hasCollateralFlag ? c.pasal4TitleWith : c.pasal4TitleWithout}</div>
+        ${hasCollateralFlag ? `
+        <ol class="clause-list">
+          <li>${c.p4_with_1}</li>
+          <li>${c.p4_with_2}</li>
+          <li>${c.p4_with_3}</li>
+          <li>${c.p4_with_4}</li>
+          <li>${c.p4_with_5}</li>
+          <li>${c.p4_with_6}</li>
+          <li>${c.p4_with_7}</li>
+        </ol>
+        ` : `
+        <ol class="clause-list">
+          <li>${c.p4_without_1}</li>
+          <li>${c.p4_without_2}</li>
+          <li>${c.p4_without_3}</li>
+          <li>${c.p4_without_4}</li>
+          <li>${c.p4_without_5}</li>
+        </ol>
+        `}
+      </div>
+
+      <div class="clause-section">
+        <div class="clause-title">${c.pasal5Title}</div>
+        <ol class="clause-list">
+          <li>${c.p5_1}</li>
+          <li>${c.p5_2}</li>
+          <li>${c.p5_3}</li>
+        </ol>
+      </div>
+    `;
+
+    const contractBodyHtml = debt.uploadedContractText
+      ? buildAdjustedContractHtml(
+          debt.uploadedContractText,
+          debt,
+          dSym,
+          dCurr,
+          principalVal,
+          collateralClauseText,
+          t.flexible
+        )
+      : defaultFiveClausesHtml;
 
     const historyRows = (debt.paymentHistory || []).map((log, idx) => {
       const logDetailText = formatHistoryLogSummary(log, dCurr, debt);
@@ -3672,104 +3562,7 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
           </div>
         </div>
 
-        <div class="clause-section">
-          <div class="clause-title">${c.pasal1Title}</div>
-          <ol class="clause-list">
-            <li>${c.p1_1} <strong>${dSym} ${principalVal.toLocaleString()} (${dCurr})</strong></li>
-            <li>${c.p1_2} ${startDateFormatted} (${debt.startDate || '-'})</li>
-            <li>${c.p1_3} ${dueDateFormatted} ${debt.dueDate ? `(${debt.dueDate})` : ''}</li>
-            <li>${c.p1_4} ${tenorTextClause}</li>
-            <li>${c.p1_5}</li>
-            <li>${c.p1_6}</li>
-            <li>${c.p1_7} ${debt.bonusPercent || 0}% (${t.totalPlusLabel} ${rewardLabel}: <strong>${dSym} ${(debt.amount || 0).toLocaleString()}</strong>).</li>
-            <li>${c.p1_8}</li>
-          </ol>
-        </div>
-
-        <div class="clause-section">
-          <div class="clause-title">${c.pasal2Title}</div>
-          <p class="clause-text">${c.p2_intro}</p>
-          ${isMicroScheme ? `
-          <div class="tier-card" style="margin: 3px 0;">
-            <span class="tier-heading">${microSchemeTitle}</span>
-            <ul>
-              ${microSchemeItems.map((item) => `<li>${item}</li>`).join('')}
-            </ul>
-          </div>
-          ` : `
-          <div class="tier-grid">
-            <div class="tier-card">
-              <span class="tier-heading">${dynamicTiers.tierATitle}</span>
-              <ul>
-                <li>${dynamicTiers.tierA1}</li>
-                <li>${dynamicTiers.tierA2}</li>
-                <li>${dynamicTiers.tierA3}</li>
-              </ul>
-            </div>
-            <div class="tier-card">
-              <span class="tier-heading">${dynamicTiers.tierBTitle}</span>
-              <ul>
-                <li>${dynamicTiers.tierB1}</li>
-                <li>${dynamicTiers.tierB2}</li>
-                <li>${dynamicTiers.tierB3}</li>
-              </ul>
-            </div>
-          </div>
-          `}
-          <p class="clause-text">
-            ${c.p2_schemeNote} <strong>${activeSchemeLabel}</strong>.
-          </p>
-        </div>
-
-        <div class="clause-section">
-          <div class="clause-title">${hasCollateralFlag ? c.pasal3TitleWith : c.pasal3TitleWithout}</div>
-          ${hasCollateralFlag ? `
-          <ol class="clause-list">
-            <li>${c.p3_with_1}</li>
-            <li>${c.p3_with_2} <strong>${collateralClauseText}</strong>.</li>
-            <li>${c.p3_with_3}</li>
-            <li>${c.p3_with_4}</li>
-          </ol>
-          ` : `
-          <ol class="clause-list">
-            <li>${c.p3_without_1}</li>
-            <li>${c.p3_without_2}</li>
-            <li>${c.p3_without_3}</li>
-          </ol>
-          `}
-        </div>
-
-        <div class="clause-section">
-          <div class="clause-title">${hasCollateralFlag ? c.pasal4TitleWith : c.pasal4TitleWithout}</div>
-          ${hasCollateralFlag ? `
-          <ol class="clause-list">
-            <li>${c.p4_with_1}</li>
-            <li>${c.p4_with_2}</li>
-            <li>${c.p4_with_3}</li>
-            <li>${c.p4_with_4}</li>
-            <li>${c.p4_with_5}</li>
-            <li>${c.p4_with_6}</li>
-            <li>${c.p4_with_7}</li>
-          </ol>
-          ` : `
-          <ol class="clause-list">
-            <li>${c.p4_without_1}</li>
-            <li>${c.p4_without_2}</li>
-            <li>${c.p4_without_3}</li>
-            <li>${c.p4_without_4}</li>
-            <li>${c.p4_without_5}</li>
-          </ol>
-          `}
-        </div>
-
-        <div class="clause-section">
-          <div class="clause-title">${c.pasal5Title}</div>
-          <ol class="clause-list">
-            <li>${c.p5_1}</li>
-            <li>${c.p5_2}</li>
-            <li>${c.p5_3}</li>
-          </ol>
-        </div>
+        ${contractBodyHtml}
 
         <div class="contract-sign-row">
           <div class="place-date-box">  
@@ -4136,7 +3929,7 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
           </button>
 
           <button
-            onClick={() => { resetDebtForm(); setIsDebtModalOpen(true); }}
+            onClick={() => { setEditingDebtData(null); setIsDebtModalOpen(true); }}
             className={`px-4 py-2.5 bg-gradient-to-r ${themeStyle.gradientBtn} text-white rounded-xl font-semibold shadow-lg transition flex items-center gap-2 flex-1 md:flex-none justify-center`}>
             <Plus className="w-5 h-5" /> {t.addDebt}
           </button>
@@ -4542,601 +4335,28 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
       </div>
 
       {/* MODAL: Form Tambah / Edit Pinjaman */}
-      {isDebtModalOpen && (
-        <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 pb-24 sm:pb-6 overflow-y-auto">
-          <div className={`border rounded-2xl w-full max-w-2xl p-5 sm:p-6 shadow-2xl my-auto max-h-[82vh] overflow-y-auto ${modalBg}`}>
-            <h2 className={`text-xl sm:text-2xl font-bold mb-5 flex items-center gap-2 ${themeStyle.textAccent}`}>
-              <FileText className="w-6 h-6" /> {currentDebtId ? t.modalTitleEdit : t.modalTitleAdd}
-            </h2>
-
-            <form onSubmit={handleSaveDebt} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
-                    <User className="w-3.5 h-3.5" /> {t.nameLabel} *
-                  </label>
-                  <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`} />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
-                    <UserCheck className="w-3.5 h-3.5 text-emerald-400" /> {t.lenderNameLabel}
-                  </label>
-                  <input type="text" value={lenderName} onChange={(e) => setLenderName(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`} />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
-                    <IdCard className="w-3.5 h-3.5 text-sky-400" /> {t.debtorIdLabel}
-                  </label>
-                  <input type="text" value={debtorIdNo} onChange={(e) => setDebtorIdNo(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`} />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
-                    <IdCard className="w-3.5 h-3.5 text-amber-400" /> {t.creditorIdLabel}
-                  </label>
-                  <input type="text" value={creditorIdNo} onChange={(e) => setCreditorIdNo(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`} />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-rose-400" /> {t.debtorAddressLabel}
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder={t.debtorAddressPlaceholder}
-                    value={debtorAddress}
-                    onChange={(e) => setDebtorAddress(e.target.value)}
-                    className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">{t.currLabel}</label>
-                  <select value={debtCurrency} onChange={(e) => setDebtCurrency(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}>
-                    {currenciesList.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
-                  </select>
-                </div>
-
-                {(() => {
-                  const modalLimits = getContractLimits({
-                    isMicro: lateFeeMode === 'micro',
-                    hasCollateral: collateral,
-                    currencyCode: debtCurrency
-                  });
-                  return (
-                    <div>
-                      <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
-                        <label className="text-xs font-semibold text-slate-400">{t.loanAmount} *</label>
-                        <span className="text-[11px] font-bold text-emerald-400">
-                          Maks: {modalLimits.cleanCurr} {formatNumberWithSeparator(modalLimits.maxVal)}
-                        </span>
-                      </div>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        required
-                        value={formatNumberWithSeparator(amount)}
-                        onChange={(e) => {
-                          const rawDigits = e.target.value.replace(/\D/g, '');
-                          const clamped = clampContractAmount(rawDigits, modalLimits);
-                          setAmount(clamped);
-                        }}
-                        className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}
-                      />
-                      <p className="text-[10px] text-slate-400 mt-1">
-                        {modalLimits.contractLabel}: Min {modalLimits.cleanCurr} {formatNumberWithSeparator(modalLimits.minVal)} – Maks {modalLimits.cleanCurr} {formatNumberWithSeparator(modalLimits.maxVal)}
-                      </p>
-                    </div>
-                  );
-                })()}
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-semibold text-slate-400 flex items-center gap-1">
-                      <Gift className="w-3.5 h-3.5 text-amber-400" /> {t.bonusPercentage} (Maks 20%)
-                    </label>
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] text-slate-400">{t.selectRewardType}</span>
-                      <button
-                        type="button"
-                        onClick={() => setBonusType('bonus')}
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${bonusType === 'bonus' ? `${themeStyle.bgAccent} text-white` : isDarkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-600'}`}>
-                        {t.bonusText}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setBonusType('interest')}
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${bonusType === 'interest' ? `${themeStyle.bgAccent} text-white` : isDarkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-600'}`}>
-                        {t.interestText}
-                      </button>
-                    </div>
-                  </div>
-
-                  <input
-                    type="number"
-                    min="0"
-                    max="20"
-                    step="0.1"
-                    value={bonusPercent}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      if (isNaN(val)) {
-                        setBonusPercent('');
-                      } else {
-                        setBonusPercent(String(Math.min(Math.max(val, 0), 20)));
-                      }
-                    }}
-                    className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}
-                  />
-
-                  {amount && parseFloat(bonusPercent) > 0 && (
-                    <span className="text-[11px] text-emerald-400 mt-1 block font-medium">
-                      {t.totalPlusLabel} {bonusType === 'interest' ? t.interestText : t.bonusText}: {getCurrencySymbolDynamic(debtCurrency)} {(parseFloat(amount) + (parseFloat(amount) * (parseFloat(bonusPercent) / 100))).toLocaleString()}
-                    </span>
-                  )}
-                </div>
-
-                {/* SKEMA DENDA KETERLAMBATAN */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
-                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400" /> {t.lateFeeModeLabel}
-                  </label>
-                  <div className="flex gap-1.5 mb-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setLateFeeMode('auto')}
-                      className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold border transition ${lateFeeMode === 'auto' ? `${themeStyle.bgAccent} text-white border-transparent` : isDarkMode ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-300'}`}>
-                      {t.lateFeeModeAuto}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setLateFeeMode('manual')}
-                      className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold border transition ${lateFeeMode === 'manual' ? `${themeStyle.bgAccent} text-white border-transparent` : isDarkMode ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-300'}`}>
-                      {t.lateFeeModeManual}
-                    </button>
-                  </div>
-
-                  {lateFeeMode === 'manual' ? (
-                    <>
-                      <input type="number" min="0" step="0.5" value={lateFeePercent} onChange={(e) => setLateFeePercent(e.target.value)} className={`w-full rounded-xl p-2 text-sm border ${inputBg}`} placeholder="%" />
-                      <span className="text-[10px] text-slate-400 mt-0.5 block">{t.lateFeeSub}</span>
-                    </>
-                  ) : lateFeeMode === 'micro' ? (
-                    <div className={`p-2 rounded-lg border text-[10px] leading-relaxed ${isDarkMode ? 'bg-emerald-950/30 border-emerald-800/70 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-800'}`}>
-                      <div>• {t.microLoanToggleLabel}</div>
-                      <div>• {t.lateFeeSub} (Maks 32,5%)</div>
-                    </div>
-                  ) : (
-                    <div className={`p-2 rounded-lg border text-[10px] leading-relaxed ${isDarkMode ? 'bg-slate-800/70 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-300 text-slate-700'}`}>
-                      <div>• {t.lateFeeTierADesc}</div>
-                      <div>• {t.lateFeeTierBDesc}</div>
-                    </div>
-                  )}
-                </div>
-
-                {/* TOGGLE PAKET PINJAMAN MIKRO KHUSUS */}
-                <div className="md:col-span-2">
-                  <div className={`p-3 rounded-xl border ${lateFeeMode === 'micro' ? (isDarkMode ? 'bg-emerald-950/25 border-emerald-700' : 'bg-emerald-50 border-emerald-300') : bgInnerBox}`}>
-                    <label className="flex items-center gap-2.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={lateFeeMode === 'micro'}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setLateFeeMode('micro');
-                            setCollateral(false);
-                            setCollateralDesc('');
-                            const microLimits = getContractLimits({ isMicro: true, hasCollateral: false, currencyCode: debtCurrency });
-                            if (amount) {
-                              setAmount(clampContractAmount(String(amount).replace(/\D/g, ''), microLimits));
-                            }
-                          } else {
-                            setLateFeeMode('auto');
-                          }
-                        }}
-                        className="w-4 h-4 accent-emerald-500 rounded"
-                      />
-                      <span className="text-xs font-bold text-emerald-400">
-                        {t.microLoanToggleLabel}
-                      </span>
-                    </label>
-                    <p className="text-[11px] text-slate-400 mt-1 pl-6">
-                      {t.microLoanToggleHint}
-                    </p>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
-                    <Phone className="w-3.5 h-3.5" /> {t.borrowerPhone}
-                  </label>
-                  <input type="tel" value={borrowerPhone} onChange={(e) => setBorrowerPhone(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`} />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
-                    <Phone className="w-3.5 h-3.5 text-emerald-400" /> {t.emergencyPhone}
-                  </label>
-                  <input type="tel" value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`} />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">{t.categoryLabel}</label>
-                  <select value={category} onChange={(e) => setCategory(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}>
-                    {categories.map((cat, i) => <option key={i} value={cat}>{cat}</option>)}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">{t.loanType}</label>
-                  <select value={type} onChange={(e) => setType(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}>
-                    {loanTypes.map((lt, i) => <option key={i} value={lt}>{lt}</option>)}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">{t.datePinjam}</label>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => {
-                      const newStart = e.target.value;
-                      setStartDate(newStart);
-                      if (isInstallment) {
-                        syncDueDateWithInstallments(newStart, installmentCount);
-                      }
-                    }}
-                    className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">{t.dateTempo}</label>
-                  <input
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">{t.payMethod}</label>
-                  <select value={paymentMethodKey} onChange={(e) => setPaymentMethodKey(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}>
-                    <option value="transfer">{t.methods.transfer}</option>
-                    <option value="ewallet">{t.methods.ewallet}</option>
-                    <option value="cash">{t.methods.cash}</option>
-                    <option value="flexible">{t.methods.flexible}</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">{t.status}</label>
-                  <select value={statusKey} onChange={(e) => setStatusKey(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}>
-                    <option value="active">{t.statusOptions.active}</option>
-                    <option value="dueSoon">{t.statusOptions.dueSoon}</option>
-                    <option value="paid">{t.statusOptions.paid}</option>
-                  </select>
-                </div>
-
-                {paymentMethodKey !== 'cash' && (
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
-                      <CreditCard className="w-3.5 h-3.5 text-sky-400" /> {t.payAccountLabel}
-                    </label>
-                    <input
-                      type="text"
-                      placeholder={t.payAccountPlaceholder}
-                      value={paymentAccountInfo}
-                      onChange={(e) => setPaymentAccountInfo(e.target.value)}
-                      className={`w-full rounded-xl p-2.5 text-sm border ${inputBg}`}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Installment Mode */}
-              <div className={`p-3.5 rounded-xl border ${bgInnerBox}`}>
-                <label className="flex items-center gap-2 cursor-pointer mb-2">
-                  <input
-                    type="checkbox"
-                    checked={isInstallment}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setIsInstallment(checked);
-                      if (checked) {
-                        syncDueDateWithInstallments(startDate, installmentCount);
-                      }
-                    }}
-                    className="w-4 h-4 accent-amber-500 rounded"
-                  />
-                  <span className={`text-sm font-bold flex items-center gap-1.5 ${themeStyle.textAccent}`}>
-                    <Percent className="w-4 h-4" /> {t.installmentMode}
-                  </span>
-                </label>
-
-                {isInstallment && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 pt-3 border-t border-slate-800">
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">{t.installmentCount}</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="120"
-                        value={installmentCount}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setInstallmentCount(val);
-                          syncDueDateWithInstallments(startDate, val);
-                        }}
-                        className={`w-full rounded-xl p-2 text-sm border ${inputBg}`}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">{t.paidInstallments}</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max={installmentCount}
-                        value={paidInstallments}
-                        onChange={(e) => setPaidInstallments(e.target.value)}
-                        className={`w-full rounded-xl p-2 text-sm border ${inputBg}`}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Collateral Section */}
-              <div className={`p-3.5 rounded-xl border ${bgInnerBox}`}>
-                <label className="flex items-center gap-2 cursor-pointer mb-1.5">
-                  <input
-                    type="checkbox"
-                    checked={collateral}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setCollateral(checked);
-                      if (checked && lateFeeMode === 'micro') {
-                        setLateFeeMode('auto');
-                      }
-                      const nextLimits = getContractLimits({
-                        isMicro: !checked && lateFeeMode === 'micro',
-                        hasCollateral: checked,
-                        currencyCode: debtCurrency
-                      });
-                      if (amount) {
-                        setAmount(clampContractAmount(String(amount).replace(/\D/g, ''), nextLimits));
-                      }
-                    }}
-                    className="w-4 h-4 accent-amber-500 rounded"
-                  />
-                  <span className="text-sm font-semibold">{t.hasCollateral}</span>
-                </label>
-
-                <p className={`text-[11px] mb-2 pl-6 ${collateral ? 'text-amber-400' : 'text-sky-400'}`}>
-                  {collateral ? t.collateralTemplateHintWith : t.collateralTemplateHintWithout}
-                </p>
-
-                {collateral && (
-                  <input type="text" placeholder={t.collateralDesc} value={collateralDesc} onChange={(e) => setCollateralDesc(e.target.value)} className={`w-full rounded-xl p-2.5 text-sm border mt-1 ${inputBg}`} />
-                )}
-              </div>
-
-              {/* Lampiran Tanda Tangan & Cap Sidik Jari */}
-              <div className={`p-3.5 rounded-xl border ${bgInnerBox}`}>
-                <label className={`block text-xs font-bold mb-2.5 flex items-center gap-1.5 ${themeStyle.textAccent}`}>
-                  <Fingerprint className="w-4 h-4" /> {t.authAssetsTitle}
-                </label>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className={`p-2.5 rounded-xl border ${isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
-                    <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">{t.creditorFingerprintLabel}</span>
-                    <div className="flex items-center gap-2">
-                      <label className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border flex items-center gap-1 transition ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-200' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'}`}>
-                        <Fingerprint className="w-3.5 h-3.5 text-emerald-400" /> {t.uploadImgBtn}
-                        <input type="file" accept="image/*" onChange={(e) => handleAuthAssetUpload(e, setCreditorFingerprint)} className="hidden" />
-                      </label>
-                      {creditorFingerprint && (
-                        <div className="flex items-center gap-1.5">
-                          <img src={creditorFingerprint} alt="Creditor FP" className="w-8 h-8 object-contain rounded border border-slate-600 bg-white" />
-                          <button type="button" onClick={() => setCreditorFingerprint(null)} className="text-rose-400 hover:text-rose-300 p-1"><X className="w-3.5 h-3.5" /></button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className={`p-2.5 rounded-xl border ${isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
-                    <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">{t.creditorSignatureLabel}</span>
-                    <div className="flex items-center gap-2">
-                      <label className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border flex items-center gap-1 transition ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-200' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'}`}>
-                        <PenTool className="w-3.5 h-3.5 text-sky-400" /> {t.uploadImgBtn}
-                        <input type="file" accept="image/*" onChange={(e) => handleAuthAssetUpload(e, setCreditorSignature)} className="hidden" />
-                      </label>
-                      {creditorSignature && (
-                        <div className="flex items-center gap-1.5">
-                          <img src={creditorSignature} alt="Creditor Sign" className="w-12 h-8 object-contain rounded border border-slate-600 bg-white" />
-                          <button type="button" onClick={() => setCreditorSignature(null)} className="text-rose-400 hover:text-rose-300 p-1"><X className="w-3.5 h-3.5" /></button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className={`p-2.5 rounded-xl border ${isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
-                    <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">{t.debtorFingerprintLabel}</span>
-                    <div className="flex items-center gap-2">
-                      <label className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border flex items-center gap-1 transition ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-200' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'}`}>
-                        <Fingerprint className="w-3.5 h-3.5 text-emerald-400" /> {t.uploadImgBtn}
-                        <input type="file" accept="image/*" onChange={(e) => handleAuthAssetUpload(e, setDebtorFingerprint)} className="hidden" />
-                      </label>
-                      {debtorFingerprint && (
-                        <div className="flex items-center gap-1.5">
-                          <img src={debtorFingerprint} alt="Debtor FP" className="w-8 h-8 object-contain rounded border border-slate-600 bg-white" />
-                          <button type="button" onClick={() => setDebtorFingerprint(null)} className="text-rose-400 hover:text-rose-300 p-1"><X className="w-3.5 h-3.5" /></button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className={`p-2.5 rounded-xl border ${isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
-                    <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">{t.debtorSignatureLabel}</span>
-                    <div className="flex items-center gap-2">
-                      <label className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border flex items-center gap-1 transition ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-200' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'}`}>
-                        <PenTool className="w-3.5 h-3.5 text-sky-400" /> {t.uploadImgBtn}
-                        <input type="file" accept="image/*" onChange={(e) => handleAuthAssetUpload(e, setDebtorSignature)} className="hidden" />
-                      </label>
-                      {debtorSignature && (
-                        <div className="flex items-center gap-1.5">
-                          <img src={debtorSignature} alt="Debtor Sign" className="w-12 h-8 object-contain rounded border border-slate-600 bg-white" />
-                          <button type="button" onClick={() => setDebtorSignature(null)} className="text-rose-400 hover:text-rose-300 p-1"><X className="w-3.5 h-3.5" /></button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Camera / Proof */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1.5">{t.cameraLabel}</label>
-                <div className="flex items-center gap-3">
-                  <label className={`px-4 py-2.5 rounded-xl text-sm font-medium cursor-pointer border flex items-center gap-2 transition ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'}`}>
-                    <Camera className={`w-5 h-5 ${themeStyle.textAccent}`} /> {t.takePhoto}
-                    <input type="file" accept="image/*" onChange={handleImageCapture} className="hidden" />
-                  </label>
-                  {image && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-emerald-400 font-semibold">{t.photoAttached}</span>
-                      <button type="button" onClick={() => setImage(null)} className="text-rose-400 hover:text-rose-300 p-1"><X className="w-4 h-4" /></button>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Lampiran 7 Foto Verifikasi Debitur, Jaminan & Etc (Halaman 4 Cetak) */}
-              <div className="mt-4 pt-4 border-t border-slate-700/60">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                    <Camera className="w-4 h-4" /> {t.contract.page4Header} (7 Foto)
-                  </span>
-                  <span className="text-[11px] text-slate-400">4x6 & 2R</span>
-                </div>
-
-                <p className="text-[11px] font-semibold text-slate-300 mb-1.5">{t.contract.page4Sec1Title}</p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3">
-                  {[
-                    { label: t.contract.photoSlotIdDebtor, val: photoIdDebtor, set: setPhotoIdDebtor },
-                    { label: t.contract.photoSlotSelfieDebtor, val: photoSelfieDebtor, set: setPhotoSelfieDebtor },
-                    { label: t.contract.photoSlotSelfieIdDebtor, val: photoSelfieIdDebtor, set: setPhotoSelfieIdDebtor }
-                  ].map((slot, i) => (
-                    <div key={i} className={`p-2 rounded-xl border ${bgInnerBox}`}>
-                      <span className="block text-[11px] font-medium text-slate-300 mb-1.5 truncate" title={slot.label}>
-                        {slot.label}
-                      </span>
-                      {slot.val ? (
-                        <div className="relative group">
-                          <img src={slot.val} alt={slot.label} className="w-full h-24 object-cover rounded-lg border border-slate-600" />
-                          <button
-                            type="button"
-                            onClick={() => slot.set('')}
-                            className="absolute top-1 right-1 bg-rose-600 text-white p-1 rounded-full shadow"
-                            title="Hapus foto"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <label className="flex flex-col items-center justify-center h-20 border border-dashed border-slate-600 rounded-lg cursor-pointer hover:border-amber-400 transition text-slate-400 hover:text-amber-300 text-[11px]">
-                          <Camera className="w-4 h-4 mb-1" />
-                          <span>{t.uploadImgBtn}</span>
-                          <input type="file" accept="image/*" onChange={(e) => handlePage4PhotoUpload(e, slot.set, true)} className="hidden" />
-                        </label>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                <p className="text-[11px] font-semibold text-slate-300 mb-1.5">{t.contract.page4Sec2Title}</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-3">
-                  {[
-                    { label: collateral ? t.contract.photoSlotCollateral1 : t.contract.photoSlotHandover1, val: photoCollateral1, set: setPhotoCollateral1 },
-                    { label: collateral ? t.contract.photoSlotCollateral2 : t.contract.photoSlotHandover2, val: photoCollateral2, set: setPhotoCollateral2 }
-                  ].map((slot, i) => (
-                    <div key={i} className={`p-2 rounded-xl border ${bgInnerBox}`}>
-                      <span className="block text-[11px] font-medium text-slate-300 mb-1.5 truncate" title={slot.label}>
-                        {slot.label}
-                      </span>
-                      {slot.val ? (
-                        <div className="relative">
-                          <img src={slot.val} alt={slot.label} className="w-full h-24 object-cover rounded-lg border border-slate-600" />
-                          <button
-                            type="button"
-                            onClick={() => slot.set('')}
-                            className="absolute top-1 right-1 bg-rose-600 text-white p-1 rounded-full shadow"
-                            title="Hapus foto"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <label className="flex flex-col items-center justify-center h-20 border border-dashed border-slate-600 rounded-lg cursor-pointer hover:border-amber-400 transition text-slate-400 hover:text-amber-300 text-[11px]">
-                          <Camera className="w-4 h-4 mb-1" />
-                          <span>{t.uploadImgBtn}</span>
-                          <input type="file" accept="image/*" onChange={(e) => handlePage4PhotoUpload(e, slot.set, false)} className="hidden" />
-                        </label>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                <p className="text-[11px] font-semibold text-slate-300 mb-1.5">{t.contract.page4Sec3Title}</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {[
-                    { label: t.contract.photoSlotEtc1, val: photoEtc1, set: setPhotoEtc1 },
-                    { label: t.contract.photoSlotEtc2, val: photoEtc2, set: setPhotoEtc2 }
-                  ].map((slot, i) => (
-                    <div key={i} className={`p-2 rounded-xl border ${bgInnerBox}`}>
-                      <span className="block text-[11px] font-medium text-slate-300 mb-1.5 truncate" title={slot.label}>
-                        {slot.label}
-                      </span>
-                      {slot.val ? (
-                        <div className="relative">
-                          <img src={slot.val} alt={slot.label} className="w-full h-24 object-cover rounded-lg border border-slate-600" />
-                          <button
-                            type="button"
-                            onClick={() => slot.set('')}
-                            className="absolute top-1 right-1 bg-rose-600 text-white p-1 rounded-full shadow"
-                            title="Hapus foto"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <label className="flex flex-col items-center justify-center h-20 border border-dashed border-slate-600 rounded-lg cursor-pointer hover:border-amber-400 transition text-slate-400 hover:text-amber-300 text-[11px]">
-                          <Camera className="w-4 h-4 mb-1" />
-                          <span>{t.uploadImgBtn}</span>
-                          <input type="file" accept="image/*" onChange={(e) => handlePage4PhotoUpload(e, slot.set, false)} className="hidden" />
-                        </label>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className={`flex justify-end gap-3 pt-4 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
-                <button type="button" onClick={() => setIsDebtModalOpen(false)} className={`px-4 py-2 rounded-xl text-sm font-medium ${isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'}`}>
-                  {t.cancel}
-                </button>
-                <button type="submit" className={`px-6 py-2 bg-gradient-to-r ${themeStyle.gradientBtn} text-white rounded-xl font-bold text-sm shadow-lg`}>
-                  {t.save}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
+      {/* MODAL: Form Tambah / Edit Pinjaman */}
+      <DebtFormModal
+        language={language}
+        isOpen={isDebtModalOpen}
+        onClose={() => {
+          setIsDebtModalOpen(false);
+          setEditingDebtData(null);
+        }}
+        onSubmitDebt={handleSaveDebt}
+        initialData={editingDebtData}
+        managerCurrency={managerCurrency}
+        liveRates={liveRates}
+        categories={categories}
+        loanTypes={loanTypes}
+        currenciesList={currenciesList}
+        themeStyle={themeStyle}
+        isDarkMode={isDarkMode}
+        modalBg={modalBg}
+        bgInnerBox={bgInnerBox}
+        inputBg={inputBg}
+        t={t}
+      />
       {/* MODAL: Quick Pay / Pencatatan Pembayaran dengan Tanggal & Jam Otomatis/Manual */}
       {isPayModalOpen && selectedDebtForPay && (() => {
         const payModalLateInfo = calculateLateStatus(selectedDebtForPay, payCustomDate);
@@ -5311,17 +4531,17 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
       {isTypeModalOpen && (
         <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 pb-24 sm:pb-6 overflow-y-auto">
           <div className={`border rounded-2xl w-full max-w-md p-5 sm:p-6 shadow-2xl my-auto max-h-[82vh] overflow-y-auto ${modalBg}`}>
-            <h3 className="text-lg font-bold text-emerald-400 mb-4">{t.typeManagerTitle}</h3>
+            <h3 className="text-lg font-bold text-emerald-500 mb-4">{t.typeManagerTitle}</h3>
             <div className="flex gap-2 mb-4">
               <input type="text" placeholder={t.newTypePlaceholder} value={newTypeName} onChange={(e) => setNewTypeName(e.target.value)} className={`flex-1 rounded-xl px-3 py-2 text-sm border ${inputBg}`} />
-              <button onClick={() => { if (newTypeName.trim()) { setLoanTypes([...loanTypes, newTypeName.trim()]); setNewTypeName(''); } }} className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold text-sm">
+              <button onClick={() => { if (newTypeName.trim()) { setLoanTypes([...loanTypes, newTypeName.trim()]); setNewTypeName(''); } }} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-sm">
                 {t.add}
               </button>
             </div>
             <div className="space-y-2 max-h-60 overflow-y-auto">
-              {loanTypes.map((lt, idx) => (
+              {loanTypes.map((tp, idx) => (
                 <div key={idx} className={`flex justify-between items-center p-2.5 rounded-xl border ${bgInnerBox}`}>
-                  <span className="text-sm font-medium">{lt}</span>
+                  <span className="text-sm font-medium">{tp}</span>
                   <button onClick={() => setLoanTypes(loanTypes.filter((_, i) => i !== idx))} className="text-rose-400 hover:text-rose-300 p-1"><Trash2 className="w-4 h-4" /></button>
                 </div>
               ))}
@@ -5333,19 +4553,19 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
         </div>
       )}
 
-      {/* TOAST NOTIFIKASI */}
+      {/* Toast Notification */}
       {toastInfo && (
-        <div
-          className={`fixed bottom-24 sm:bottom-6 left-1/2 -translate-x-1/2 z-[1200] px-4 py-3 rounded-xl shadow-2xl border text-xs sm:text-sm font-semibold flex items-center gap-2.5 max-w-[92vw] ${
-            toastInfo.type === 'error'
-              ? 'bg-rose-950/95 border-rose-700 text-rose-100'
-              : toastInfo.type === 'info'
-              ? 'bg-sky-950/95 border-sky-700 text-sky-100'
-              : 'bg-emerald-950/95 border-emerald-700 text-emerald-100'
-          }`}
-        >
-          <span>{toastInfo.type === 'error' ? '⚠️' : toastInfo.type === 'info' ? 'ℹ️' : '✅'}</span>
-          <span>{toastInfo.message}</span>
+        <div className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-[1000] max-w-sm animate-fade-in">
+          <div
+            className={`px-4 py-3 rounded-xl shadow-2xl border text-xs font-semibold flex items-center gap-2.5 ${
+              toastInfo.type === 'error'
+                ? 'bg-rose-950/95 border-rose-700 text-rose-200'
+                : 'bg-emerald-950/95 border-emerald-700 text-emerald-200'
+            }`}
+          >
+            <Check className="w-4 h-4 shrink-0" />
+            <span>{toastInfo.message}</span>
+          </div>
         </div>
       )}
     </div>
