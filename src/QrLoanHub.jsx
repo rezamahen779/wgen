@@ -11,7 +11,10 @@ import {
   Power,
   PackageCheck,
   Headphones,
-  PhoneCall
+  PhoneCall,
+  Trash2,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { auth } from './lib/firebase';
@@ -59,11 +62,437 @@ const DEFAULT_HOTLINE_CONFIG = {
   note: 'Hubungi admin/kreditur jika mengalami kendala pengisian formulir, upload jaminan, atau konfirmasi transfer.'
 };
 
+// === KAMUS 5 BAHASA DINAMIS (ID, JP, EN, CN, AR) ===
+const QR_HUB_I18N = {
+  id: {
+    btnQr: 'QR Pengajuan',
+    btnInbox: 'Pengajuan Masuk',
+    btnDropProof: 'Bukti Drop Jaminan',
+    btnHotline: 'Hotline',
+    offBadge: 'Off',
+    idNoticeTitle: 'Fitur Khusus Pengguna di Indonesia',
+    idNoticeSub: 'QR Pengajuan, Kotak Masuk, Bukti Drop & Hotline',
+    idNoticeBody1:
+      'Fitur QR Pengajuan, Pengajuan Masuk, Bukti Drop Jaminan, dan Hotline dirancang khusus untuk transaksi di wilayah Indonesia (format nomor HP +62, Rupiah/konversi lokal, serta verifikasi KTP & dokumen).',
+    idNoticeBody2:
+      'Setelah diaktifkan, pengaturan ini akan tersimpan otomatis. Anda dapat mematikan atau menghidupkan kembali seluruh fitur ini dalam satu saklar melalui menu QR Pengajuan atau Hotline.',
+    cancel: 'Batal',
+    understandEnable: 'Saya Mengerti & Aktifkan',
+    qrModalTitle: 'QR Code Pengajuan Pinjaman',
+    qrModalSub: 'Khusus Wilayah & Transaksi Indonesia',
+    preparingQr: 'Menyiapkan QR Code...',
+    posterSectionTitle: 'Teks Poster QR (Ikut Tercetak Saat Download PNG):',
+    posterTopLabel: 'Judul Atas QR:',
+    posterBottomLabel: 'Catatan / Keterangan Bawah QR:',
+    paymentAccLabel: 'Rekening / E-Wallet Tujuan Pembayaran (Otomatis Tersimpan & Terisi Saat ACC):',
+    save: 'Simpan',
+    copyLink: 'Salin Link',
+    copied: 'Tersalin!',
+    downloadQrText: 'Download QR + Teks',
+    disableQrLink: 'Nonaktifkan Link QR',
+    enableQrLink: 'Aktifkan Link QR',
+    newToken: 'Buat Token Baru',
+    featureStatusTitle: 'Status Fitur QR, Inbox, Bukti Drop & Hotline',
+    featureStatusSub: 'Matikan jika tidak digunakan untuk transaksi Indonesia.',
+    turnOffFeature: 'Matikan Fitur',
+    inboxTitle: 'Pengajuan Masuk',
+    lastUpdated: 'Terakhir diperbarui',
+    refresh: 'Refresh',
+    loading: 'Memuat...',
+    loadingApps: 'Memuat data pengajuan masuk...',
+    noPendingApps: 'Belum ada pengajuan baru yang menunggu persetujuan.',
+    checkAgain: 'Cek Ulang Sekarang',
+    dropModalTitle: 'Bukti Pengiriman / Drop Jaminan',
+    deleteAllDrops: 'Hapus Semua',
+    confirmDeleteAllDrops: 'Hapus semua daftar bukti drop jaminan yang tersimpan?',
+    confirmDeleteSingleDrop: 'Hapus kartu bukti drop jaminan ini?',
+    deletedDropToast: 'Bukti drop jaminan dihapus.',
+    deletedAllDropsToast: 'Semua bukti drop jaminan berhasil dihapus.',
+    loadingDrops: 'Memuat bukti drop jaminan masuk...',
+    noDrops: 'Belum ada bukti pengiriman / drop barang jaminan yang diterima atau dikirim debitur.',
+    appNo: 'No. Pengajuan',
+    receivedDate: 'Tgl Diterima',
+    notVerifiedYet: 'Belum diverifikasi',
+    collateralUnit: 'Unit Jaminan',
+    dropNote: 'Keterangan Drop',
+    dropPhotoLabel: 'Lampiran Foto Bukti Drop / Jaminan:',
+    downloadProof: 'Unduh Bukti',
+    confirmSaveProof: 'Simpan & Konfirmasi Bukti Diterima',
+    saving: 'Menyimpan...',
+    verifiedBadge: '✓ Bukti Tersimpan & Diverifikasi',
+    pendingBadge: 'Menunggu Verifikasi Kreditur',
+    minimize: 'Perkecil',
+    expand: 'Perluas',
+    deleteCard: 'Hapus Kartu',
+    hotlineModalTitle: 'Pengaturan Hotline Debitur',
+    hotlineModalSub: 'Otomatis tampil di halaman formulir pengajuan (LoanApplyPage)',
+    hotlineToggleTitle: 'Tampilkan Tombol Hotline di Halaman Pengajuan',
+    hotlineToggleSub: 'Debitur bisa langsung chat WhatsApp / hubungi hotline dari halaman form.',
+    hotlineLabelField: 'Judul / Label Hotline:',
+    hotlinePhoneField: 'Nomor WhatsApp / Telepon Hotline:',
+    hotlineHoursField: 'Jam Layanan / Operasional:',
+    hotlineNoteField: 'Pesan / Keterangan Tambahan (Edit Manual):',
+    hotlinePreviewLabel: 'Preview di Halaman Pengajuan:',
+    saveApplyForm: 'Simpan & Terapkan ke Form',
+    transferModalTitle: 'Laporan Transfer Cicilan',
+    transferModalSub:
+      'Cek mutasi rekening Anda, lalu klik Konfirmasi agar saldo tiket peminjam otomatis terupdate.',
+    allTransfersVerified: 'Semua laporan transfer sudah diverifikasi.',
+    installmentTo: 'Angsuran ke-',
+    transferAmount: 'Nominal Transfer:',
+    viaAccount: 'Via / Rekening:',
+    receiptPhotoLabel: 'Lampiran Foto Bukti Struk:',
+    verifying: 'Memverifikasi...',
+    confirmMutationBtn: '✓ Mutasi Masuk — Konfirmasi & Update Tiket',
+    saveToLinkOnly: 'Simpan ke Link Saja',
+    saveSendWa: 'Simpan & Kirim via WhatsApp',
+    openWaAcc: 'Buka WhatsApp & Kirim Info ACC'
+  },
+  en: {
+    btnQr: 'Loan QR',
+    btnInbox: 'Incoming Apps',
+    btnDropProof: 'Collateral Drop Proofs',
+    btnHotline: 'Hotline',
+    offBadge: 'Off',
+    idNoticeTitle: 'Indonesia Region Feature',
+    idNoticeSub: 'Loan QR, Inbox, Collateral Drop Proofs & Hotline',
+    idNoticeBody1:
+      'Loan QR, Incoming Applications, Collateral Drop Proofs, and Hotline are tailored for transactions in Indonesia (+62 phone numbers, IDR/local currency conversion, and KTP/document verification).',
+    idNoticeBody2:
+      'Once enabled, this preference is saved automatically. You can turn all these features off or back on anytime with one switch inside Loan QR.',
+    cancel: 'Cancel',
+    understandEnable: 'I Understand & Enable',
+    qrModalTitle: 'Loan Application QR Code',
+    qrModalSub: 'For Indonesia Region & Transactions',
+    preparingQr: 'Preparing QR Code...',
+    posterSectionTitle: 'QR Poster Text (Included When Downloading PNG):',
+    posterTopLabel: 'QR Top Title:',
+    posterBottomLabel: 'QR Bottom Note / Subtitle:',
+    paymentAccLabel: 'Destination Account / E-Wallet (Auto-Saved & Filled on Approval):',
+    save: 'Save',
+    copyLink: 'Copy Link',
+    copied: 'Copied!',
+    downloadQrText: 'Download QR + Text',
+    disableQrLink: 'Disable QR Link',
+    enableQrLink: 'Enable QR Link',
+    newToken: 'Generate New Token',
+    featureStatusTitle: 'QR, Inbox, Drop Proof & Hotline Status',
+    featureStatusSub: 'Turn off if not used for Indonesia transactions.',
+    turnOffFeature: 'Turn Off Feature',
+    inboxTitle: 'Incoming Applications',
+    lastUpdated: 'Last updated',
+    refresh: 'Refresh',
+    loading: 'Loading...',
+    loadingApps: 'Loading incoming applications...',
+    noPendingApps: 'No new applications waiting for approval.',
+    checkAgain: 'Check Again Now',
+    dropModalTitle: 'Collateral Delivery / Drop Proofs',
+    deleteAllDrops: 'Delete All',
+    confirmDeleteAllDrops: 'Delete all saved collateral drop proof records?',
+    confirmDeleteSingleDrop: 'Delete this collateral drop proof card?',
+    deletedDropToast: 'Collateral drop proof deleted.',
+    deletedAllDropsToast: 'All collateral drop proofs deleted.',
+    loadingDrops: 'Loading collateral drop proofs...',
+    noDrops: 'No collateral delivery / drop proofs received or submitted yet.',
+    appNo: 'Application No.',
+    receivedDate: 'Received Date',
+    notVerifiedYet: 'Pending verification',
+    collateralUnit: 'Collateral Item',
+    dropNote: 'Drop Note',
+    dropPhotoLabel: 'Attached Drop / Collateral Photo:',
+    downloadProof: 'Download Proof',
+    confirmSaveProof: 'Save & Confirm Proof Received',
+    saving: 'Saving...',
+    verifiedBadge: '✓ Proof Saved & Verified',
+    pendingBadge: 'Awaiting Lender Verification',
+    minimize: 'Minimize',
+    expand: 'Expand',
+    deleteCard: 'Delete Card',
+    hotlineModalTitle: 'Borrower Hotline Settings',
+    hotlineModalSub: 'Automatically displayed on the application form (LoanApplyPage)',
+    hotlineToggleTitle: 'Show Hotline Button on Application Page',
+    hotlineToggleSub: 'Borrowers can directly chat via WhatsApp or call the hotline from the form.',
+    hotlineLabelField: 'Hotline Title / Label:',
+    hotlinePhoneField: 'Hotline WhatsApp / Phone Number:',
+    hotlineHoursField: 'Operating / Service Hours:',
+    hotlineNoteField: 'Additional Message / Instructions (Editable):',
+    hotlinePreviewLabel: 'Application Page Preview:',
+    saveApplyForm: 'Save & Apply to Form',
+    transferModalTitle: 'Installment Transfer Reports',
+    transferModalSub:
+      'Verify your bank statement, then click Confirm to update the borrower ticket balance.',
+    allTransfersVerified: 'All transfer reports have been verified.',
+    installmentTo: 'Installment #',
+    transferAmount: 'Transfer Amount:',
+    viaAccount: 'Via / Account:',
+    receiptPhotoLabel: 'Transfer Receipt Photo:',
+    verifying: 'Verifying...',
+    confirmMutationBtn: '✓ Payment Received — Confirm & Update Ticket',
+    saveToLinkOnly: 'Save to Link Only',
+    saveSendWa: 'Save & Send via WhatsApp',
+    openWaAcc: 'Open WhatsApp & Send Approval'
+  },
+  jp: {
+    btnQr: '申請用QR',
+    btnInbox: '受信申請一覧',
+    btnDropProof: '担保受渡証明',
+    btnHotline: 'ホットライン',
+    offBadge: 'オフ',
+    idNoticeTitle: 'インドネシア地域専用機能',
+    idNoticeSub: '申請用QR・受信トレイ・担保受渡証明・ホットライン',
+    idNoticeBody1:
+      '申請用QR、受信申請一覧、担保受渡証明、ホットラインはインドネシア国内取引向け（+62電話番号、ルピア/現地通貨換算、KTP・書類確認）に設計されています。',
+    idNoticeBody2:
+      '有効化すると設定は自動保存されます。申請用QRメニュー内のスイッチからいつでも一括でオン/オフを切り替えられます。',
+    cancel: 'キャンセル',
+    understandEnable: '理解して有効化する',
+    qrModalTitle: 'ローン申請用QRコード',
+    qrModalSub: 'インドネシア地域・取引専用',
+    preparingQr: 'QRコードを準備中...',
+    posterSectionTitle: 'QRポスターテキスト（PNG保存時に印刷されます）:',
+    posterTopLabel: 'QR上部タイトル:',
+    posterBottomLabel: 'QR下部メモ・説明文:',
+    paymentAccLabel: '返済先口座 / Eウォレット（承認時に自動保存・入力）:',
+    save: '保存',
+    copyLink: 'リンクをコピー',
+    copied: 'コピー完了！',
+    downloadQrText: 'QR＋テキスト保存',
+    disableQrLink: 'QRリンクを無効化',
+    enableQrLink: 'QRリンクを有効化',
+    newToken: '新規トークン発行',
+    featureStatusTitle: 'QR・受信トレイ・担保証明・ホットライン状態',
+    featureStatusSub: 'インドネシア取引で使用しない場合はオフにしてください。',
+    turnOffFeature: '機能をオフにする',
+    inboxTitle: '受信した申請',
+    lastUpdated: '最終更新',
+    refresh: '更新',
+    loading: '読込中...',
+    loadingApps: '受信申請を読み込み中...',
+    noPendingApps: '承認待ちの新規申請はありません。',
+    checkAgain: '今すぐ再確認',
+    dropModalTitle: '担保引渡し・受領証明',
+    deleteAllDrops: 'すべて削除',
+    confirmDeleteAllDrops: '保存されている担保受渡証明をすべて削除しますか？',
+    confirmDeleteSingleDrop: 'この担保受渡証明カードを削除しますか？',
+    deletedDropToast: '担保受渡証明を削除しました。',
+    deletedAllDropsToast: 'すべての担保受渡証明を削除しました。',
+    loadingDrops: '担保受渡証明を読み込み中...',
+    noDrops: '提出または受領された担保引渡し証明はまだありません。',
+    appNo: '申請番号',
+    receivedDate: '受領日',
+    notVerifiedYet: '未確認',
+    collateralUnit: '担保品目',
+    dropNote: '受渡メモ',
+    dropPhotoLabel: '添付された担保・受渡写真:',
+    downloadProof: '証明を保存',
+    confirmSaveProof: '受領確認して保存',
+    saving: '保存中...',
+    verifiedBadge: '✓ 証明保存・確認済み',
+    pendingBadge: '貸主の確認待ち',
+    minimize: '縮小',
+    expand: '展開',
+    deleteCard: 'カード削除',
+    hotlineModalTitle: '借主向けホットライン設定',
+    hotlineModalSub: '申請フォーム画面（LoanApplyPage）に自動表示されます',
+    hotlineToggleTitle: '申請ページにホットラインボタンを表示',
+    hotlineToggleSub: '借主がフォーム画面から直接WhatsAppチャットや電話連絡を行えます。',
+    hotlineLabelField: 'ホットライン表示名:',
+    hotlinePhoneField: 'ホットライン WhatsApp / 電話番号:',
+    hotlineHoursField: '受付・営業時間:',
+    hotlineNoteField: '補足メッセージ・案内文（編集可能）:',
+    hotlinePreviewLabel: '申請画面でのプレビュー:',
+    saveApplyForm: '保存してフォームに反映',
+    transferModalTitle: '分割返済の振込報告',
+    transferModalSub:
+      '口座の入金明細を確認後、「確認」を押すと借主チケット残高が自動更新されます。',
+    allTransfersVerified: 'すべての振込報告は確認済みです。',
+    installmentTo: '返済回数 第',
+    transferAmount: '振込金額:',
+    viaAccount: '振込元 / 口座:',
+    receiptPhotoLabel: '振込明細写真:',
+    verifying: '確認中...',
+    confirmMutationBtn: '✓ 入金確認完了 — チケットを更新',
+    saveToLinkOnly: 'リンクのみに保存',
+    saveSendWa: '保存してWhatsApp送信',
+    openWaAcc: 'WhatsAppを開いて承認通知'
+  },
+  cn: {
+    btnQr: '申请二维码',
+    btnInbox: '收到的申请',
+    btnDropProof: '抵押物交付凭证',
+    btnHotline: '客服热线',
+    offBadge: '关闭',
+    idNoticeTitle: '印度尼西亚地区专用功能',
+    idNoticeSub: '申请二维码、收件箱、抵押物交付凭证与热线',
+    idNoticeBody1:
+      '申请二维码、收到的申请、抵押物交付凭证及热线专为印度尼西亚地区交易设计（+62手机号格式、印尼盾/本地汇率换算及KTP证件审核）。',
+    idNoticeBody2:
+      '启用后设置将自动保存。您可随时在“申请二维码”菜单中通过一键开关关闭或重新开启全部功能。',
+    cancel: '取消',
+    understandEnable: '我已了解并启用',
+    qrModalTitle: '借款申请二维码',
+    qrModalSub: '仅限印度尼西亚地区及交易使用',
+    preparingQr: '正在生成二维码...',
+    posterSectionTitle: '二维码海报文字（下载PNG时一并打印）:',
+    posterTopLabel: '二维码顶部标题:',
+    posterBottomLabel: '二维码底部备注/说明:',
+    paymentAccLabel: '收款账户 / 电子钱包（审批通过时自动保存并填充）:',
+    save: '保存',
+    copyLink: '复制链接',
+    copied: '已复制！',
+    downloadQrText: '下载二维码+文字',
+    disableQrLink: '停用二维码链接',
+    enableQrLink: '启用二维码链接',
+    newToken: '生成新令牌',
+    featureStatusTitle: '二维码、收件箱、抵押凭证与热线状态',
+    featureStatusSub: '如不用于印尼交易，可关闭此功能。',
+    turnOffFeature: '关闭功能',
+    inboxTitle: '收到的申请',
+    lastUpdated: '最后更新',
+    refresh: '刷新',
+    loading: '加载中...',
+    loadingApps: '正在加载收到的申请...',
+    noPendingApps: '暂无等待审批的新申请。',
+    checkAgain: '立即重新检查',
+    dropModalTitle: '抵押物交付 / 交接凭证',
+    deleteAllDrops: '全部删除',
+    confirmDeleteAllDrops: '确定要删除所有已保存的抵押物交付凭证吗？',
+    confirmDeleteSingleDrop: '确定要删除此抵押物交付凭证卡片吗？',
+    deletedDropToast: '已删除抵押物交付凭证。',
+    deletedAllDropsToast: '已清空所有抵押物交付凭证。',
+    loadingDrops: '正在加载抵押物交付凭证...',
+    noDrops: '暂未收到或提交任何抵押物交付凭证。',
+    appNo: '申请编号',
+    receivedDate: '接收日期',
+    notVerifiedYet: '待核实',
+    collateralUnit: '抵押物品',
+    dropNote: '交付备注',
+    dropPhotoLabel: '抵押物/交付凭证照片附件:',
+    downloadProof: '下载凭证',
+    confirmSaveProof: '保存并确认已收到抵押物',
+    saving: '保存中...',
+    verifiedBadge: '✓ 凭证已保存并核实',
+    pendingBadge: '等待出借人核实',
+    minimize: '收起',
+    expand: '展开',
+    deleteCard: '删除卡片',
+    hotlineModalTitle: '借款人热线设置',
+    hotlineModalSub: '自动显示在申请表单页面 (LoanApplyPage)',
+    hotlineToggleTitle: '在申请页面显示热线按钮',
+    hotlineToggleSub: '借款人可直接在表单页面通过 WhatsApp 聊天或拨打热线。',
+    hotlineLabelField: '热线标题 / 标签:',
+    hotlinePhoneField: '热线 WhatsApp / 电话号码:',
+    hotlineHoursField: '服务 / 营业时间:',
+    hotlineNoteField: '附加说明 / 提示信息（可手动编辑）:',
+    hotlinePreviewLabel: '申请页面预览效果:',
+    saveApplyForm: '保存并应用到表单',
+    transferModalTitle: '分期转账报告',
+    transferModalSub: '核对您的银行流水后，点击确认以自动更新借款人账单余额。',
+    allTransfersVerified: '所有转账报告均已核实。',
+    installmentTo: '第',
+    transferAmount: '转账金额:',
+    viaAccount: '转账方式 / 账户:',
+    receiptPhotoLabel: '转账凭证截图:',
+    verifying: '核实中...',
+    confirmMutationBtn: '✓ 已收到款项 — 确认并更新账单',
+    saveToLinkOnly: '仅保存到链接',
+    saveSendWa: '保存并通过 WhatsApp 发送',
+    openWaAcc: '打开 WhatsApp 发送审批通知'
+  },
+  ar: {
+    btnQr: 'رمز QR للطلب',
+    btnInbox: 'الطلبات الواردة',
+    btnDropProof: 'إثبات تسليم الضمان',
+    btnHotline: 'الخط الساخن',
+    offBadge: 'متوقف',
+    idNoticeTitle: 'ميزة مخصصة للمستخدمين في إندونيسيا',
+    idNoticeSub: 'رمز QR، صندوق الوارد، إثبات الضمان والخط الساخن',
+    idNoticeBody1:
+      'تم تصميم ميزات رمز QR والطلبات الواردة وإثبات تسليم الضمان والخط الساخن خصيصاً للمعاملات داخل إندونيسيا (أرقام +62، الروبية والتحويل المحلي، والتحقق من الهوية والمستندات).',
+    idNoticeBody2:
+      'بعد التفعيل، يتم حفظ الإعداد تلقائياً. يمكنك إيقاف أو إعادة تشغيل جميع هذه الميزات بزر واحد من قائمة رمز QR.',
+    cancel: 'إلغاء',
+    understandEnable: 'أفهم وأوافق على التفعيل',
+    qrModalTitle: 'رمز QR لتقديم طلب القرض',
+    qrModalSub: 'خاص بمنطقة ومعاملات إندونيسيا',
+    preparingQr: 'جاري تجهيز رمز QR...',
+    posterSectionTitle: 'نص ملصق QR (يُطبع تلقائياً عند تنزيل PNG):',
+    posterTopLabel: 'العنوان العلوي لرمز QR:',
+    posterBottomLabel: 'الملاحظة السفلية لرمز QR:',
+    paymentAccLabel: 'حساب / محفظة السداد (يُحفظ ويُملأ تلقائياً عند الموافقة):',
+    save: 'حفظ',
+    copyLink: 'نسخ الرابط',
+    copied: 'تم النسخ!',
+    downloadQrText: 'تنزيل QR + النص',
+    disableQrLink: 'تعطيل رابط QR',
+    enableQrLink: 'تفعيل رابط QR',
+    newToken: 'إنشاء رمز جديد',
+    featureStatusTitle: 'حالة ميزات QR والوارد والضمان والخط الساخن',
+    featureStatusSub: 'قم بالإيقاف إذا لم تكن تستخدمها لمعاملات إندونيسيا.',
+    turnOffFeature: 'إيقاف الميزة',
+    inboxTitle: 'الطلبات الواردة',
+    lastUpdated: 'آخر تحديث',
+    refresh: 'تحديث',
+    loading: 'جاري التحميل...',
+    loadingApps: 'جاري تحميل الطلبات الواردة...',
+    noPendingApps: 'لا توجد طلبات جديدة بانتظار الموافقة.',
+    checkAgain: 'إعادة الفحص الآن',
+    dropModalTitle: 'إثباتات تسليم / إيداع الضمان',
+    deleteAllDrops: 'حذف الكل',
+    confirmDeleteAllDrops: 'هل تريد حذف جميع إثباتات تسليم الضمان المحفوظة؟',
+    confirmDeleteSingleDrop: 'هل تريد حذف بطاقة إثبات تسليم الضمان هذه؟',
+    deletedDropToast: 'تم حذف إثبات تسليم الضمان.',
+    deletedAllDropsToast: 'تم حذف جميع إثباتات تسليم الضمان.',
+    loadingDrops: 'جاري تحميل إثباتات تسليم الضمان...',
+    noDrops: 'لا توجد إثباتات تسليم ضمان مستلمة أو مرسلة بعد.',
+    appNo: 'رقم الطلب',
+    receivedDate: 'تاريخ الاستلام',
+    notVerifiedYet: 'بانتظار التحقق',
+    collateralUnit: 'عنصر الضمان',
+    dropNote: 'ملاحظة التسليم',
+    dropPhotoLabel: 'صورة إثبات التسليم / الضمان المرفقة:',
+    downloadProof: 'تنزيل الإثبات',
+    confirmSaveProof: 'حفظ وتأكيد استلام الضمان',
+    saving: 'جاري الحفظ...',
+    verifiedBadge: '✓ تم حفظ الإثبات والتحقق منه',
+    pendingBadge: 'بانتظار تحقق المُقرض',
+    minimize: 'تصغير',
+    expand: 'توسيع',
+    deleteCard: 'حذف البطاقة',
+    hotlineModalTitle: 'إعدادات الخط الساخن للمقترضين',
+    hotlineModalSub: 'يظهر تلقائياً في صفحة نموذج الطلب (LoanApplyPage)',
+    hotlineToggleTitle: 'إظهار زر الخط الساخن في صفحة الطلب',
+    hotlineToggleSub: 'يمكن للمقترض التواصل مباشرة عبر واتساب أو الاتصال من صفحة النموذج.',
+    hotlineLabelField: 'عنوان / تسمية الخط الساخن:',
+    hotlinePhoneField: 'رقم واتساب / هاتف الخط الساخن:',
+    hotlineHoursField: 'ساعات العمل والخدمة:',
+    hotlineNoteField: 'رسالة / تعليمات إضافية (قابلة للتعديل):',
+    hotlinePreviewLabel: 'معاينة في صفحة الطلب:',
+    saveApplyForm: 'حفظ وتطبيق على النموذج',
+    transferModalTitle: 'بلاغات تحويل الأقساط',
+    transferModalSub:
+      'تحقق من كشف حسابك البنكي، ثم اضغط تأكيد لتحديث رصيد تذكرة المقترض تلقائياً.',
+    allTransfersVerified: 'تم التحقق من جميع بلاغات التحويل.',
+    installmentTo: 'القسط رقم ',
+    transferAmount: 'مبلغ التحويل:',
+    viaAccount: 'عبر / الحساب:',
+    receiptPhotoLabel: 'صورة إيصال التحويل:',
+    verifying: 'جاري التحقق...',
+    confirmMutationBtn: '✓ تم استلام التحويل — تأكيد وتحديث التذكرة',
+    saveToLinkOnly: 'حفظ في الرابط فقط',
+    saveSendWa: 'حفظ وإرسال عبر واتساب',
+    openWaAcc: 'فتح واتساب وإرسال الموافقة'
+  }
+};
+
 export default function QrLoanHub({
   isDarkMode = true,
+  lang,
+  language,
+  currentLang,
   managerCurrency,
   liveRates,
-  themeStyle, 
+  themeStyle,
   modalBg,
   bgInnerBox,
   inputBg,
@@ -73,6 +502,65 @@ export default function QrLoanHub({
   onMarkApplicationApprovedRef,
   showToast
 }) {
+  // === DETEKSI BAHASA DINAMIS (ID, JP, EN, CN, AR) ===
+  const [detectedLang, setDetectedLang] = useState(() => {
+    const raw =
+      lang ||
+      language ||
+      currentLang ||
+      localStorage.getItem('wgen_lang') ||
+      localStorage.getItem('wgen_language') ||
+      localStorage.getItem('app_lang') ||
+      'id';
+    return String(raw).toLowerCase().slice(0, 2);
+  });
+
+  useEffect(() => {
+    const syncLang = () => {
+      const raw =
+        lang ||
+        language ||
+        currentLang ||
+        localStorage.getItem('wgen_lang') ||
+        localStorage.getItem('wgen_language') ||
+        localStorage.getItem('app_lang') ||
+        'id';
+      const normalized = String(raw).toLowerCase().slice(0, 2);
+      setDetectedLang(QR_HUB_I18N[normalized] ? normalized : 'id');
+    };
+    syncLang();
+    window.addEventListener('storage', syncLang);
+    return () => window.removeEventListener('storage', syncLang);
+  }, [lang, language, currentLang]);
+
+  const activeLang = QR_HUB_I18N[detectedLang] ? detectedLang : 'id';
+  const t = QR_HUB_I18N[activeLang];
+  const isRtl = activeLang === 'ar';
+
+  // === HELPER STYLING ADAPTIF LIGHT / DARK MODE ===
+  const effectiveModalBg = isDarkMode
+    ? modalBg || 'bg-slate-900 border-slate-700 text-slate-100'
+    : 'bg-white border-slate-300 text-slate-900';
+
+  const effectiveInnerBox = isDarkMode
+    ? bgInnerBox || 'bg-slate-950/60 border-slate-800 text-slate-100'
+    : 'bg-slate-50 border-slate-200 text-slate-900';
+
+  const effectiveInputBg = isDarkMode
+    ? inputBg || 'bg-slate-900/90 border-slate-700 text-white placeholder-slate-400'
+    : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:outline-none';
+
+  const textPrimary = isDarkMode ? 'text-white' : 'text-slate-900';
+  const textSecondary = isDarkMode ? 'text-slate-300' : 'text-slate-700';
+  const textMuted = isDarkMode ? 'text-slate-400' : 'text-slate-500';
+  const borderDivider = isDarkMode ? 'border-slate-700/60' : 'border-slate-200';
+  const closeBtnClass = isDarkMode
+    ? 'text-slate-400 hover:text-white'
+    : 'text-slate-500 hover:text-slate-900';
+  const secondaryBtnClass = isDarkMode
+    ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+    : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300';
+
   // === STATE FITUR KHUSUS INDONESIA (AKTIF / NONAKTIF & PERSETUJUAN AWAL) ===
   const [qrFeatureEnabled, setQrFeatureEnabled] = useState(() => {
     return localStorage.getItem('wgen_qr_feature_enabled') === 'true';
@@ -130,6 +618,15 @@ export default function QrLoanHub({
       return [];
     }
   });
+  const [deletedDropIds, setDeletedDropIds] = useState(() => {
+    try {
+      const saved = localStorage.getItem('wgen_deleted_drop_proof_ids');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [minimizedDropCards, setMinimizedDropCards] = useState({});
   const [loadingDropProofs, setLoadingDropProofs] = useState(false);
   const [verifyingDropId, setVerifyingDropId] = useState(null);
 
@@ -168,13 +665,43 @@ export default function QrLoanHub({
     waMessage: ''
   });
 
-  // Helper simpan cache lokal bukti drop agar tidak pernah hilang saat refresh
+  // Helper simpan cache lokal bukti drop
   const persistDropProofCache = (items) => {
     try {
       localStorage.setItem('wgen_verified_drop_proofs_cache', JSON.stringify(items));
     } catch (e) {
       console.warn('Cache bukti drop melebihi kuota storage:', e);
     }
+  };
+
+  const persistDeletedDropIds = (ids) => {
+    try {
+      localStorage.setItem('wgen_deleted_drop_proof_ids', JSON.stringify(ids));
+    } catch (e) {
+      console.warn('Gagal menyimpan daftar ID drop terhapus:', e);
+    }
+  };
+
+  // Helper format tanggal penerimaan barang
+  const formatDropReceivedDate = (drop) => {
+    const rawDate = drop.verified_at || drop.created_at;
+    if (!rawDate) return t.notVerifiedYet;
+    const d = new Date(rawDate);
+    if (isNaN(d.getTime())) return String(rawDate);
+    const localeMap = {
+      id: 'id-ID',
+      en: 'en-US',
+      jp: 'ja-JP',
+      cn: 'zh-CN',
+      ar: 'ar-SA'
+    };
+    return d.toLocaleDateString(localeMap[activeLang] || 'id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   // Helper format angka & batas kontrak
@@ -339,7 +866,6 @@ export default function QrLoanHub({
         })
       );
 
-      // Gabungkan bukti drop dari DB Turso + catatan collateral_feedback di tabel aplikasi + cache lokal
       let cachedLocalDrops = [];
       try {
         cachedLocalDrops = JSON.parse(
@@ -349,25 +875,35 @@ export default function QrLoanHub({
         cachedLocalDrops = [];
       }
 
+      let currentDeletedIds = [];
+      try {
+        currentDeletedIds = JSON.parse(
+          localStorage.getItem('wgen_deleted_drop_proof_ids') || '[]'
+        );
+      } catch {
+        currentDeletedIds = [];
+      }
+      const deletedSet = new Set(currentDeletedIds);
+
       const dropMap = new Map();
 
-      // 1. Masukkan dari cache lokal terlebih dahulu
       if (Array.isArray(cachedLocalDrops)) {
         for (const item of cachedLocalDrops) {
           const key = item.application_id || item.id;
-          if (key) dropMap.set(key, item);
+          if (key && !deletedSet.has(key) && !deletedSet.has(item.id)) {
+            dropMap.set(key, item);
+          }
         }
       }
 
-      // 2. Timpa/lengkapi dengan data dari tabel khusus DB Turso jika ada
       if (Array.isArray(dbDropRows)) {
         for (const item of dbDropRows) {
           const key = item.application_id || item.id;
+          if (!key || deletedSet.has(key) || deletedSet.has(item.id)) continue;
           const existing = dropMap.get(key);
           dropMap.set(key, {
             ...existing,
             ...item,
-            // Pertahankan status verified jika sudah diverifikasi lokal/DB
             status:
               existing?.status === 'verified' || item.status === 'verified'
                 ? 'verified'
@@ -376,8 +912,9 @@ export default function QrLoanHub({
         }
       }
 
-      // 3. Cek seluruh aplikasi (termasuk yang sudah approved) yang punya bukti drop atau sudah ditandai diterima kreditur
       for (const app of allRows) {
+        if (deletedSet.has(app.id) || deletedSet.has(`DROP-${app.id}`)) continue;
+
         const fb = String(app.collateral_feedback || '');
         const hasDropFromDebtor =
           fb.includes('[BUKTI DROP DIKIRIM DEBITUR') ||
@@ -415,6 +952,7 @@ export default function QrLoanHub({
               isMarkedReceivedByLender || existing?.status === 'verified'
                 ? 'verified'
                 : 'pending',
+            verified_at: existing?.verified_at || (isMarkedReceivedByLender ? app.updated_at : null),
             created_at: app.updated_at || app.created_at || new Date().toISOString()
           });
         }
@@ -507,7 +1045,6 @@ export default function QrLoanHub({
     };
   }, [qrFeatureEnabled]);
 
-  // Expose helper ke parent jika DebtManager selesai menyimpan pengajuan yang di-ACC
   useEffect(() => {
     if (onMarkApplicationApprovedRef) {
       onMarkApplicationApprovedRef.current = async (appId) => {
@@ -551,7 +1088,6 @@ export default function QrLoanHub({
     setQrFeatureEnabled(true);
     setShowIdNoticeModal(false);
 
-    // Aktifkan kembali hotline di server jika sebelumnya dimatikan
     if (qrLinkData?.token && typeof updateLenderQrSettings === 'function') {
       updateLenderQrSettings(qrLinkData.token, {
         hotlineEnabled: hotlineConfig.enabled,
@@ -582,7 +1118,6 @@ export default function QrLoanHub({
       setShowDropProofModal(false);
       setShowHotlineModal(false);
 
-      // Sinkronkan ke server agar Hotline di LoanApplyPage.jsx ikut tersembunyi saat fitur dimatikan
       if (qrLinkData?.token && typeof updateLenderQrSettings === 'function') {
         updateLenderQrSettings(qrLinkData.token, {
           hotlineEnabled: false
@@ -613,7 +1148,7 @@ export default function QrLoanHub({
     }
   };
 
-  // === VERIFIKASI & SIMPAN BUKTI DROP JAMINAN ===
+  // === VERIFIKASI, MINIMIZE, & HAPUS BUKTI DROP JAMINAN ===
   const handleVerifyAndSaveDropProof = async (dropItem) => {
     setVerifyingDropId(dropItem.id);
     try {
@@ -627,7 +1162,6 @@ export default function QrLoanHub({
         ).catch(() => {});
       }
 
-      // Pastikan juga tercatat di collateral_feedback aplikasi utama agar permanen di DB
       if (dropItem.application_id && typeof updateApplicationFeedback === 'function') {
         await updateApplicationFeedback({
           applicationId: dropItem.application_id,
@@ -635,10 +1169,11 @@ export default function QrLoanHub({
         }).catch(() => {});
       }
 
+      const nowIso = new Date().toISOString();
       setDropProofList((prev) => {
         const updated = prev.map((item) =>
           item.id === dropItem.id || item.application_id === dropItem.application_id
-            ? { ...item, status: 'verified', verified_at: new Date().toISOString() }
+            ? { ...item, status: 'verified', verified_at: nowIso }
             : item
         );
         persistDropProofCache(updated);
@@ -655,6 +1190,81 @@ export default function QrLoanHub({
     } finally {
       setVerifyingDropId(null);
     }
+  };
+
+  const handleDeleteSingleDropProof = async (dropItem) => {
+    if (!window.confirm(t.confirmDeleteSingleDrop)) return;
+
+    const targetAppId = dropItem.application_id;
+    const targetDropId = dropItem.id;
+
+    // 1. Catat ke blacklist lokal agar tidak direkonstruksi ulang dari polling
+    const nextDeletedIds = Array.from(
+      new Set([...deletedDropIds, targetAppId, targetDropId].filter(Boolean))
+    );
+    setDeletedDropIds(nextDeletedIds);
+    persistDeletedDropIds(nextDeletedIds);
+
+    // 2. Hapus dari state & cache lokal
+    setDropProofList((prev) => {
+      const updated = prev.filter(
+        (item) => item.id !== targetDropId && item.application_id !== targetAppId
+      );
+      persistDropProofCache(updated);
+      return updated;
+    });
+
+    // 3. Bersihkan marker drop di DB aplikasi bila ada
+    if (targetAppId && typeof updateApplicationFeedback === 'function') {
+      updateApplicationFeedback({
+        applicationId: targetAppId,
+        collateralFeedback: ''
+      }).catch(() => {});
+    }
+
+    if (showToast) {
+      showToast(t.deletedDropToast, 'info');
+    }
+  };
+
+  const handleDeleteAllDropProofs = async () => {
+    if (dropProofList.length === 0) return;
+    if (!window.confirm(t.confirmDeleteAllDrops)) return;
+
+    const allIdsToBlock = [];
+    for (const item of dropProofList) {
+      if (item.application_id) allIdsToBlock.push(item.application_id);
+      if (item.id) allIdsToBlock.push(item.id);
+    }
+
+    const nextDeletedIds = Array.from(new Set([...deletedDropIds, ...allIdsToBlock]));
+    setDeletedDropIds(nextDeletedIds);
+    persistDeletedDropIds(nextDeletedIds);
+
+    const itemsSnapshot = [...dropProofList];
+    setDropProofList([]);
+    persistDropProofCache([]);
+    setMinimizedDropCards({});
+
+    for (const item of itemsSnapshot) {
+      if (item.application_id && typeof updateApplicationFeedback === 'function') {
+        updateApplicationFeedback({
+          applicationId: item.application_id,
+          collateralFeedback: ''
+        }).catch(() => {});
+      }
+    }
+
+    if (showToast) {
+      showToast(t.deletedAllDropsToast, 'info');
+    }
+  };
+
+  const toggleMinimizeDropCard = (cardKey) => {
+    setMinimizedDropCards((prev) => ({
+      ...prev,
+      [cardKey]: !prev[cardKey]
+    }));
   };
 
   const handleDownloadDropProofImage = (dropItem) => {
@@ -717,7 +1327,6 @@ export default function QrLoanHub({
     setQrPaymentMethod(mergedData.payment_method_key);
     setQrLinkData(mergedData);
 
-    // Jika server menyimpan config hotline sebelumnya, sinkronkan ke state lokal
     if (data?.hotline_phone || data?.hotline_label || data?.hotline_note) {
       setHotlineConfig((prev) => {
         const synced = {
@@ -768,9 +1377,9 @@ export default function QrLoanHub({
           hotlineLabel: hotlineConfig.label || 'Hotline Bantuan & Konfirmasi',
           hotlinePhone: hotlineConfig.phone || '',
           hotlineHours: hotlineConfig.hours || '',
-         hotlineNote: hotlineConfig.note || ''
-}); 
-     }
+          hotlineNote: hotlineConfig.note || ''
+        });
+      }
 
       if (showToast) {
         showToast('Pengaturan Hotline berhasil disimpan & tampil otomatis di halaman pengajuan!', 'success');
@@ -1117,9 +1726,9 @@ export default function QrLoanHub({
           )
         );
 
-        // JIKA DICENTANG DITERIMA, LANGSUNG SIMPAN KE DAFTAR "BUKTI DROP JAMINAN" (TOMBOL KE-3)
         if (collateralReceived) {
           const uid = auth?.currentUser?.uid || localStorage.getItem('wgen_last_uid') || '';
+          const nowIso = new Date().toISOString();
           const newVerifiedRecord = {
             id: `DROP-${app.id}`,
             application_id: app.id,
@@ -1130,9 +1739,16 @@ export default function QrLoanHub({
             drop_note: collateralNote || 'Barang jaminan diterima & diverifikasi fisik oleh kreditur.',
             proof_image: app.drop_proof_image || app.photo_collateral_1 || '',
             status: 'verified',
-            verified_at: new Date().toISOString(),
-            created_at: app.updated_at || app.created_at || new Date().toISOString()
+            verified_at: nowIso,
+            created_at: app.updated_at || app.created_at || nowIso
           };
+
+          // Pastikan jika pernah dihapus sebelumnya, dikeluarkan dari daftar blokir
+          const cleanedDeleted = deletedDropIds.filter(
+            (x) => x !== app.id && x !== `DROP-${app.id}`
+          );
+          setDeletedDropIds(cleanedDeleted);
+          persistDeletedDropIds(cleanedDeleted);
 
           if (typeof verifyCollateralDropProof === 'function') {
             verifyCollateralDropProof(
@@ -1177,7 +1793,7 @@ export default function QrLoanHub({
   const pendingDropCount = dropProofList.filter((d) => d.status !== 'verified').length;
 
   return (
-    <>
+    <div dir={isRtl ? 'rtl' : 'ltr'} className="contents">
       {/* 4 TOMBOL HEADER: QR PENGAJUAN, PENGAJUAN MASUK, BUKTI DROP JAMINAN, & HOTLINE */}
       <button
         type="button"
@@ -1193,14 +1809,14 @@ export default function QrLoanHub({
         }`}
       >
         <QrCode className="w-4 h-4" />
-        <span>QR Pengajuan</span>
+        <span>{t.btnQr}</span>
         {!qrFeatureEnabled && (
           <span
             className={`px-1.5 py-0.5 text-[9px] font-bold rounded ${
               isDarkMode ? 'bg-slate-700 text-slate-200' : 'bg-slate-300 text-slate-800'
             }`}
           >
-            Off
+            {t.offBadge}
           </span>
         )}
       </button>
@@ -1219,7 +1835,7 @@ export default function QrLoanHub({
         }`}
       >
         <Inbox className="w-4 h-4" />
-        <span>Pengajuan Masuk</span>
+        <span>{t.btnInbox}</span>
         {qrFeatureEnabled && incomingApps.length > 0 && (
           <span className="px-1.5 py-0.5 text-[10px] font-extrabold rounded-full bg-amber-500 text-slate-950">
             {incomingApps.length}
@@ -1241,7 +1857,7 @@ export default function QrLoanHub({
         }`}
       >
         <PackageCheck className="w-4 h-4" />
-        <span>Bukti Drop Jaminan</span>
+        <span>{t.btnDropProof}</span>
         {qrFeatureEnabled && (pendingDropCount > 0 || dropProofList.length > 0) && (
           <span
             className={`px-1.5 py-0.5 text-[10px] font-extrabold rounded-full ${
@@ -1271,7 +1887,7 @@ export default function QrLoanHub({
         }`}
       >
         <Headphones className="w-4 h-4" />
-        <span>Hotline</span>
+        <span>{t.btnHotline}</span>
         {qrFeatureEnabled && hotlineConfig.enabled && hotlineConfig.phone && (
           <span className="w-2 h-2 rounded-full bg-emerald-500" />
         )}
@@ -1279,19 +1895,26 @@ export default function QrLoanHub({
 
       {/* MODAL PEMBERITAHUAN KHUSUS PENGGUNA INDONESIA */}
       {showIdNoticeModal && (
-        <div className="fixed inset-0 z-[1050] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className={`border rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl ${modalBg}`}>
-            <div className="flex items-start justify-between gap-3 border-b border-slate-700/60 pb-3">
+        <div
+          dir={isRtl ? 'rtl' : 'ltr'}
+          className="fixed inset-0 z-[1050] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div className={`border rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl ${effectiveModalBg}`}>
+            <div className={`flex items-start justify-between gap-3 border-b pb-3 ${borderDivider}`}>
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+                <div
+                  className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${
+                    isDarkMode
+                      ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                      : 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                  }`}
+                >
                   <ShieldCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">
-                    Fitur Khusus Pengguna di Indonesia
-                  </h3>
-                  <p className="text-[11px] text-emerald-400 font-medium">
-                    QR Pengajuan, Kotak Masuk, Bukti Drop & Hotline
+                  <h3 className={`text-sm font-bold ${textPrimary}`}>{t.idNoticeTitle}</h3>
+                  <p className={`text-[11px] font-medium ${isDarkMode ? 'text-emerald-400' : 'text-emerald-700'}`}>
+                    {t.idNoticeSub}
                   </p>
                 </div>
               </div>
@@ -1301,43 +1924,42 @@ export default function QrLoanHub({
                   setShowIdNoticeModal(false);
                   setPendingActionAfterConsent(null);
                 }}
-                className="text-slate-400 hover:text-white"
+                className={closeBtnClass}
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-2.5 text-xs text-slate-300 leading-relaxed">
-              <p>
-                Fitur <strong>QR Pengajuan</strong>, <strong>Pengajuan Masuk</strong>,{' '}
-                <strong>Bukti Drop Jaminan</strong>, dan <strong>Hotline</strong> dirancang khusus
-                untuk transaksi di wilayah <strong className="text-emerald-300">Indonesia</strong>{' '}
-                (format nomor HP +62, Rupiah/konversi lokal, serta verifikasi KTP & dokumen).
-              </p>
-              <div className="p-3 rounded-xl bg-emerald-950/50 border border-emerald-800/60 text-[11px] text-emerald-200">
-                Setelah diaktifkan, pengaturan ini akan tersimpan otomatis. Anda dapat mematikan
-                atau menghidupkan kembali seluruh fitur ini dalam satu saklar melalui menu{' '}
-                <strong>QR Pengajuan</strong> atau <strong>Hotline</strong>.
+            <div className={`space-y-2.5 text-xs leading-relaxed ${textSecondary}`}>
+              <p>{t.idNoticeBody1}</p>
+              <div
+                className={`p-3 rounded-xl border text-[11px] ${
+                  isDarkMode
+                    ? 'bg-emerald-950/50 border-emerald-800/60 text-emerald-200'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                }`}
+              >
+                {t.idNoticeBody2}
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-700/60">
+            <div className={`flex items-center justify-end gap-2 pt-2 border-t ${borderDivider}`}>
               <button
                 type="button"
                 onClick={() => {
                   setShowIdNoticeModal(false);
                   setPendingActionAfterConsent(null);
                 }}
-                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                className={`px-3.5 py-2 rounded-xl text-xs font-semibold ${secondaryBtnClass}`}
               >
-                Batal
+                {t.cancel}
               </button>
               <button
                 type="button"
                 onClick={handleConfirmEnableIdFeature}
                 className={`px-4 py-2 rounded-xl bg-gradient-to-r ${themeStyle.gradientBtn} text-white text-xs font-bold shadow`}
               >
-                Saya Mengerti & Aktifkan
+                {t.understandEnable}
               </button>
             </div>
           </div>
@@ -1346,7 +1968,7 @@ export default function QrLoanHub({
 
       {/* BANNER FLOATING NOTIFIKASI DEBITUR SETUJU / MINTA TAMBAH POKOK & TRANSFER MASUK */}
       {qrFeatureEnabled && (agreedAppsNotif.length > 0 || pendingInstallmentReports.length > 0) && (
-        <div className="w-full space-y-2.5 mt-3">
+        <div dir={isRtl ? 'rtl' : 'ltr'} className="w-full space-y-2.5 mt-3">
           {agreedAppsNotif.map((appItem) => {
             const isAgreed = isRowBorrowerAgreed(appItem);
             const isRequestMore = !isAgreed;
@@ -1363,27 +1985,45 @@ export default function QrLoanHub({
                 key={appItem.id}
                 className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 shadow-lg ${
                   isRequestMore
-                    ? 'bg-amber-950/95 border-amber-400/80'
-                    : 'bg-emerald-950/95 border-emerald-400/80'
+                    ? isDarkMode
+                      ? 'bg-amber-950/95 border-amber-400/80'
+                      : 'bg-amber-50 border-amber-400'
+                    : isDarkMode
+                    ? 'bg-emerald-950/95 border-emerald-400/80'
+                    : 'bg-emerald-50 border-emerald-400'
                 }`}
               >
                 <div className="flex items-center gap-3">
                   <span
                     className={`w-8 h-8 rounded-full border flex items-center justify-center font-bold text-sm animate-bounce shrink-0 ${
                       isRequestMore
-                        ? 'bg-amber-500/25 border-amber-400 text-amber-300'
-                        : 'bg-emerald-500/25 border-emerald-400 text-emerald-300'
+                        ? isDarkMode
+                          ? 'bg-amber-500/25 border-amber-400 text-amber-300'
+                          : 'bg-amber-200 border-amber-500 text-amber-900'
+                        : isDarkMode
+                        ? 'bg-emerald-500/25 border-emerald-400 text-emerald-300'
+                        : 'bg-emerald-200 border-emerald-500 text-emerald-900'
                     }`}
                   >
                     {isRequestMore ? '↑' : '✓'}
                   </span>
                   <div>
-                    <div className="text-xs sm:text-sm font-bold text-white">
+                    <div className={`text-xs sm:text-sm font-bold ${textPrimary}`}>
                       {isRequestMore
                         ? 'Debitur Minta Tambah Pokok!'
                         : 'Debitur Menyetujui Penawaran!'}
                     </div>
-                    <div className={`text-[11px] ${isRequestMore ? 'text-amber-200' : 'text-emerald-200'}`}>
+                    <div
+                      className={`text-[11px] ${
+                        isRequestMore
+                          ? isDarkMode
+                            ? 'text-amber-200'
+                            : 'text-amber-900'
+                          : isDarkMode
+                          ? 'text-emerald-200'
+                          : 'text-emerald-900'
+                      }`}
+                    >
                       {isRequestMore ? (
                         <>
                           <strong>{appItem.borrower_name}</strong> mengajukan perubahan/tambah nominal menjadi{' '}
@@ -1391,13 +2031,13 @@ export default function QrLoanHub({
                             {appItem.currency} {nominalDitampilkan.toLocaleString('id-ID')}
                           </strong>{' '}
                           {tawaranSebelumnya > 0 && tawaranSebelumnya !== nominalDitampilkan && (
-                            <span className="text-amber-300/80">
+                            <span className="opacity-80">
                               (dari tawaran {appItem.currency} {tawaranSebelumnya.toLocaleString('id-ID')})
                             </span>
                           )}{' '}
                           (Jasa {appItem.reward_percent ?? 20}%).
                           {appItem.borrower_reply_note && (
-                            <span className="block italic text-amber-300/90 mt-0.5">
+                            <span className="block italic opacity-90 mt-0.5">
                               Catatan: "{appItem.borrower_reply_note}"
                             </span>
                           )}
@@ -1442,16 +2082,28 @@ export default function QrLoanHub({
           })}
 
           {pendingInstallmentReports.length > 0 && (
-            <div className="p-3.5 rounded-xl bg-sky-950/90 border border-sky-500/80 flex flex-wrap items-center justify-between gap-3 shadow-lg">
+            <div
+              className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 shadow-lg ${
+                isDarkMode
+                  ? 'bg-sky-950/90 border-sky-500/80'
+                  : 'bg-sky-50 border-sky-400'
+              }`}
+            >
               <div className="flex items-center gap-3">
-                <span className="w-8 h-8 rounded-full bg-sky-500/20 border border-sky-400 text-sky-300 flex items-center justify-center font-bold text-sm animate-pulse">
+                <span
+                  className={`w-8 h-8 rounded-full border flex items-center justify-center font-bold text-sm animate-pulse ${
+                    isDarkMode
+                      ? 'bg-sky-500/20 border-sky-400 text-sky-300'
+                      : 'bg-sky-200 border-sky-500 text-sky-900'
+                  }`}
+                >
                   {pendingInstallmentReports.length}
                 </span>
                 <div>
-                  <div className="text-xs sm:text-sm font-bold text-white">
+                  <div className={`text-xs sm:text-sm font-bold ${textPrimary}`}>
                     Konfirmasi Transfer Cicilan Masuk ({pendingInstallmentReports.length})
                   </div>
-                  <div className="text-[11px] text-sky-200/85">
+                  <div className={`text-[11px] ${isDarkMode ? 'text-sky-200/85' : 'text-sky-900'}`}>
                     {pendingInstallmentReports[0].borrowerName} melapor transfer angsuran ke-
                     {pendingInstallmentReports[0].installmentNumber} (
                     {pendingInstallmentReports[0].currency}{' '}
@@ -1474,34 +2126,43 @@ export default function QrLoanHub({
 
       {/* MODAL: PENGATURAN HOTLINE (TOMBOL KE-4 — OTOMATIS TAMPIL DI LoanApplyPage.jsx) */}
       {showHotlineModal && (
-        <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className={`border rounded-2xl max-w-md w-full max-h-[88vh] overflow-y-auto p-5 space-y-4 shadow-2xl ${modalBg}`}>
-            <div className="flex items-center justify-between border-b border-slate-700/60 pb-3">
+        <div
+          dir={isRtl ? 'rtl' : 'ltr'}
+          className="fixed inset-0 z-[999] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div className={`border rounded-2xl max-w-md w-full max-h-[88vh] overflow-y-auto p-5 space-y-4 shadow-2xl ${effectiveModalBg}`}>
+            <div className={`flex items-center justify-between border-b pb-3 ${borderDivider}`}>
               <div className="flex items-center gap-2">
-                <Headphones className="w-5 h-5 text-teal-400" />
+                <Headphones className={`w-5 h-5 ${isDarkMode ? 'text-teal-400' : 'text-teal-600'}`} />
                 <div>
-                  <h3 className="text-base font-bold text-white">Pengaturan Hotline Debitur</h3>
-                  <p className="text-[10px] text-teal-300/85">
-                    Otomatis tampil di halaman formulir pengajuan (LoanApplyPage)
+                  <h3 className={`text-base font-bold ${textPrimary}`}>{t.hotlineModalTitle}</h3>
+                  <p className={`text-[10px] ${isDarkMode ? 'text-teal-300/85' : 'text-teal-700'}`}>
+                    {t.hotlineModalSub}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowHotlineModal(false)}
-                className="text-slate-400 hover:text-white"
+                className={closeBtnClass}
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-3 text-xs">
-              <label className="flex items-center justify-between p-3 rounded-xl bg-teal-950/40 border border-teal-700/50 cursor-pointer">
+              <label
+                className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer ${
+                  isDarkMode
+                    ? 'bg-teal-950/40 border-teal-700/50'
+                    : 'bg-teal-50 border-teal-200'
+                }`}
+              >
                 <div>
-                  <span className="font-bold text-teal-200 block">Tampilkan Tombol Hotline di Halaman Pengajuan</span>
-                  <span className="text-[10px] text-slate-400">
-                    Debitur bisa langsung chat WhatsApp / hubungi hotline dari halaman form.
+                  <span className={`font-bold block ${isDarkMode ? 'text-teal-200' : 'text-teal-900'}`}>
+                    {t.hotlineToggleTitle}
                   </span>
+                  <span className={`text-[10px] ${textMuted}`}>{t.hotlineToggleSub}</span>
                 </div>
                 <input
                   type="checkbox"
@@ -1514,7 +2175,7 @@ export default function QrLoanHub({
               </label>
 
               <div>
-                <label className="block text-slate-300 mb-1 font-semibold">Judul / Label Hotline:</label>
+                <label className={`block mb-1 font-semibold ${textSecondary}`}>{t.hotlineLabelField}</label>
                 <input
                   type="text"
                   value={hotlineConfig.label}
@@ -1522,16 +2183,14 @@ export default function QrLoanHub({
                     setHotlineConfig((prev) => ({ ...prev, label: e.target.value }))
                   }
                   placeholder="Contoh: Hotline Bantuan & Konfirmasi"
-                  className={`w-full px-3 py-2 rounded-lg border ${inputBg}`}
+                  className={`w-full px-3 py-2 rounded-lg border ${effectiveInputBg}`}
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 mb-1 font-semibold">
-                  Nomor WhatsApp / Telepon Hotline:
-                </label>
+                <label className={`block mb-1 font-semibold ${textSecondary}`}>{t.hotlinePhoneField}</label>
                 <div className="relative">
-                  <PhoneCall className="w-4 h-4 text-emerald-400 absolute left-3 top-2.5" />
+                  <PhoneCall className="w-4 h-4 text-emerald-500 absolute left-3 top-2.5" />
                   <input
                     type="text"
                     value={hotlineConfig.phone}
@@ -1539,13 +2198,13 @@ export default function QrLoanHub({
                       setHotlineConfig((prev) => ({ ...prev, phone: e.target.value }))
                     }
                     placeholder="Contoh: 081234567890 atau 6281234567890"
-                    className={`w-full pl-9 pr-3 py-2 rounded-lg border ${inputBg}`}
+                    className={`w-full pl-9 pr-3 py-2 rounded-lg border ${effectiveInputBg}`}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-300 mb-1 font-semibold">Jam Layanan / Operasional:</label>
+                <label className={`block mb-1 font-semibold ${textSecondary}`}>{t.hotlineHoursField}</label>
                 <input
                   type="text"
                   value={hotlineConfig.hours}
@@ -1553,14 +2212,12 @@ export default function QrLoanHub({
                     setHotlineConfig((prev) => ({ ...prev, hours: e.target.value }))
                   }
                   placeholder="Contoh: Senin – Minggu, 08.00 – 21.00 WIB"
-                  className={`w-full px-3 py-2 rounded-lg border ${inputBg}`}
+                  className={`w-full px-3 py-2 rounded-lg border ${effectiveInputBg}`}
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 mb-1 font-semibold">
-                  Pesan / Keterangan Tambahan (Edit Manual):
-                </label>
+                <label className={`block mb-1 font-semibold ${textSecondary}`}>{t.hotlineNoteField}</label>
                 <textarea
                   rows={3}
                   value={hotlineConfig.note}
@@ -1568,35 +2225,39 @@ export default function QrLoanHub({
                     setHotlineConfig((prev) => ({ ...prev, note: e.target.value }))
                   }
                   placeholder="Tulis instruksi bantuan atau info kontak untuk calon debitur..."
-                  className={`w-full px-3 py-2 rounded-lg border ${inputBg}`}
+                  className={`w-full px-3 py-2 rounded-lg border ${effectiveInputBg}`}
                 />
               </div>
 
               {/* Preview tampilan kartu Hotline di LoanApplyPage */}
-              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-1">
-                <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
-                  Preview di Halaman Pengajuan:
+              <div
+                className={`p-3 rounded-xl border space-y-1 ${
+                  isDarkMode ? 'bg-slate-950/70 border-slate-800' : 'bg-slate-100 border-slate-300'
+                }`}
+              >
+                <div className={`text-[10px] uppercase tracking-wider font-bold ${textMuted}`}>
+                  {t.hotlinePreviewLabel}
                 </div>
-                <div className="text-xs font-bold text-emerald-300">
+                <div className={`text-xs font-bold ${isDarkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>
                   {hotlineConfig.label || 'Hotline Bantuan'}
                 </div>
-                <div className="text-[11px] text-slate-200 font-mono">
+                <div className={`text-[11px] font-mono ${textPrimary}`}>
                   {hotlineConfig.phone || '(Nomor belum diisi)'}{' '}
                   {hotlineConfig.hours ? `• ${hotlineConfig.hours}` : ''}
                 </div>
                 {hotlineConfig.note && (
-                  <p className="text-[11px] text-slate-400 leading-snug">{hotlineConfig.note}</p>
+                  <p className={`text-[11px] leading-snug ${textMuted}`}>{hotlineConfig.note}</p>
                 )}
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-700/60">
+            <div className={`flex items-center justify-end gap-2 pt-2 border-t ${borderDivider}`}>
               <button
                 type="button"
                 onClick={() => setShowHotlineModal(false)}
-                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                className={`px-3.5 py-2 rounded-xl text-xs font-semibold ${secondaryBtnClass}`}
               >
-                Batal
+                {t.cancel}
               </button>
               <button
                 type="button"
@@ -1604,30 +2265,50 @@ export default function QrLoanHub({
                 onClick={handleSaveHotlineSettings}
                 className={`px-4 py-2 rounded-xl bg-gradient-to-r ${themeStyle.gradientBtn} text-white text-xs font-bold shadow disabled:opacity-50`}
               >
-                {savingHotline ? 'Menyimpan...' : 'Simpan & Terapkan ke Form'}
+                {savingHotline ? t.saving : t.saveApplyForm}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL: BUKTI DROP JAMINAN MASUK & TERSIMPAN (TOMBOL KHUSUS KE-3) */}
+      {/* MODAL: BUKTI DROP JAMINAN MASUK & TERSIMPAN (2 TOMBOL DELETE + MINIMIZE) */}
       {showDropProofModal && (
-        <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className={`border rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-5 space-y-4 shadow-2xl ${modalBg}`}>
-            <div className={`flex items-center justify-between gap-2 border-b pb-3 ${isDarkMode ? 'border-slate-700/60' : 'border-slate-200'}`}>
+        <div
+          dir={isRtl ? 'rtl' : 'ltr'}
+          className="fixed inset-0 z-[999] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div className={`border rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-5 space-y-4 shadow-2xl ${effectiveModalBg}`}>
+            <div className={`flex flex-wrap items-center justify-between gap-2 border-b pb-3 ${borderDivider}`}>
               <div>
                 <h3 className={`text-base font-bold flex items-center gap-2 ${isDarkMode ? 'text-sky-400' : 'text-sky-700'}`}>
-                  <PackageCheck className="w-5 h-5" /> Bukti Pengiriman / Drop Jaminan ({dropProofList.length})
+                  <PackageCheck className="w-5 h-5" /> {t.dropModalTitle} ({dropProofList.length})
                 </h3>
                 {lastRefreshedAt && (
-                  <span className={`text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                    Terakhir diperbarui: {lastRefreshedAt.toLocaleTimeString('id-ID')}
+                  <span className={`text-[10px] ${textMuted}`}>
+                    {t.lastUpdated}: {lastRefreshedAt.toLocaleTimeString('id-ID')}
                   </span>
                 )}
               </div>
 
               <div className="flex items-center gap-2">
+                {/* TOMBOL DELETE #1: HAPUS SEMUA BUKTI DROP JAMINAN */}
+                {dropProofList.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteAllDropProofs}
+                    title={t.deleteAllDrops}
+                    className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition ${
+                      isDarkMode
+                        ? 'bg-rose-500/15 hover:bg-rose-500/25 border-rose-500/40 text-rose-300'
+                        : 'bg-rose-50 hover:bg-rose-100 border-rose-300 text-rose-700'
+                    }`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{t.deleteAllDrops}</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   disabled={loadingDropProofs}
@@ -1639,13 +2320,13 @@ export default function QrLoanHub({
                   }`}
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${loadingDropProofs ? 'animate-spin' : ''}`} />
-                  <span>{loadingDropProofs ? 'Memuat...' : 'Refresh'}</span>
+                  <span>{loadingDropProofs ? t.loading : t.refresh}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setShowDropProofModal(false)}
-                  className={`p-1 ${isDarkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`}
+                  className={`p-1 ${closeBtnClass}`}
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1654,132 +2335,183 @@ export default function QrLoanHub({
 
             {loadingDropProofs && dropProofList.length === 0 ? (
               <div className={`py-10 text-center text-xs animate-pulse ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`}>
-                Memuat bukti drop jaminan masuk...
+                {t.loadingDrops}
               </div>
             ) : dropProofList.length === 0 ? (
               <div className="py-10 text-center space-y-2">
-                <div className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                  Belum ada bukti pengiriman / drop barang jaminan yang diterima atau dikirim debitur.
-                </div>
+                <div className={`text-xs ${textMuted}`}>{t.noDrops}</div>
                 <button
                   type="button"
                   onClick={() => loadQrApplicationsAndReports('', true)}
-                  className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1.5 ${
-                    isDarkMode
-                      ? 'bg-slate-800 hover:bg-slate-700 text-sky-400'
-                      : 'bg-slate-100 hover:bg-slate-200 text-sky-700 border border-slate-300'
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1.5 ${secondaryBtnClass}`}
                 >
-                  <RefreshCw className="w-3 h-3" /> Cek Ulang Sekarang
+                  <RefreshCw className="w-3 h-3" /> {t.checkAgain}
                 </button>
               </div>
             ) : (
               <div className="space-y-3">
                 {dropProofList.map((drop) => {
+                  const cardKey = drop.id || drop.application_id;
                   const isVerified = drop.status === 'verified';
+                  const isMinimized = Boolean(minimizedDropCards[cardKey]);
+
                   return (
                     <div
-                      key={drop.id || drop.application_id}
-                      className={`p-4 rounded-xl border space-y-2.5 text-xs ${bgInnerBox}`}
+                      key={cardKey}
+                      className={`p-4 rounded-xl border space-y-2.5 text-xs transition-all ${effectiveInnerBox}`}
                     >
+                      {/* BARIS ATAS KARTU: SELALU TAMPIL (BAIK MODE MINIMIZE MAUPUN EXPAND) */}
                       <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div>
-                          <div className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                        <div className="space-y-0.5">
+                          <div className={`font-bold text-sm ${textPrimary}`}>
                             {drop.borrower_name || 'Debitur'}
                           </div>
                           <div className={`text-[11px] font-mono ${isDarkMode ? 'text-emerald-400' : 'text-emerald-700'}`}>
-                            No. Pengajuan: {drop.application_id}
+                            {t.appNo}: {drop.application_id}
                           </div>
-                          {drop.borrower_phone && (
-                            <div className={`text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                              HP: {drop.borrower_phone}
+                          {isMinimized && (
+                            <div className={`text-[11px] pt-1 space-y-0.5 ${textSecondary}`}>
+                              <div>
+                                <span className={textMuted}>{t.receivedDate}: </span>
+                                <span className="font-semibold">{formatDropReceivedDate(drop)}</span>
+                              </div>
+                              <div>
+                                <span className={textMuted}>{t.collateralUnit}: </span>
+                                <span className="font-semibold">{drop.collateral_desc || '-'}</span>
+                              </div>
                             </div>
+                          )}
+                          {!isMinimized && drop.borrower_phone && (
+                            <div className={`text-[11px] ${textMuted}`}>HP: {drop.borrower_phone}</div>
                           )}
                         </div>
 
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
-                            isVerified
-                              ? isDarkMode
-                                ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                                : 'bg-emerald-100 border-emerald-300 text-emerald-800'
-                              : isDarkMode
-                              ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
-                              : 'bg-amber-100 border-amber-300 text-amber-800'
-                          }`}
-                        >
-                          {isVerified ? '✓ Bukti Tersimpan & Diverifikasi' : 'Menunggu Verifikasi Kreditur'}
-                        </span>
-                      </div>
-
-                      <div
-                        className={`p-2.5 rounded-lg border space-y-1 ${
-                          isDarkMode ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'
-                        }`}
-                      >
-                        <div>
-                          <span className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>Unit Jaminan: </span>
-                          <span className={`font-semibold ${isDarkMode ? 'text-slate-200' : 'text-slate-900'}`}>
-                            {drop.collateral_desc || '-'}
-                          </span>
-                        </div>
-                        {drop.drop_note && (
-                          <div>
-                            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>Keterangan Drop: </span>
-                            <span className={`font-medium ${isDarkMode ? 'text-sky-300' : 'text-sky-700'}`}>
-                              {drop.drop_note}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {!isMinimized && (
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                                isVerified
+                                  ? isDarkMode
+                                    ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                                    : 'bg-emerald-100 border-emerald-300 text-emerald-800'
+                                  : isDarkMode
+                                  ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                                  : 'bg-amber-100 border-amber-300 text-amber-800'
+                              }`}
+                            >
+                              {isVerified ? t.verifiedBadge : t.pendingBadge}
                             </span>
-                          </div>
-                        )}
-                      </div>
+                          )}
 
-                      {drop.proof_image && (
-                        <div className="space-y-1">
-                          <span className={`text-[11px] block ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                            Lampiran Foto Bukti Drop / Jaminan:
-                          </span>
-                          <img
-                            src={drop.proof_image}
-                            alt="Bukti Drop Jaminan"
-                            className={`w-full max-h-60 object-contain rounded-lg border ${
-                              isDarkMode ? 'border-slate-700 bg-black' : 'border-slate-300 bg-slate-100'
-                            }`}
-                          />
-                        </div>
-                      )}
-
-                      <div className={`flex flex-wrap items-center justify-end gap-2 pt-2 border-t ${isDarkMode ? 'border-slate-700/50' : 'border-slate-200'}`}>
-                        {drop.proof_image && (
+                          {/* TOMBOL MINIMIZE / EXPAND PER KARTU */}
                           <button
                             type="button"
-                            onClick={() => handleDownloadDropProofImage(drop)}
-                            className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 ${
+                            onClick={() => toggleMinimizeDropCard(cardKey)}
+                            title={isMinimized ? t.expand : t.minimize}
+                            className={`px-2 py-1 rounded-lg border text-[11px] font-semibold flex items-center gap-1 transition ${secondaryBtnClass}`}
+                          >
+                            {isMinimized ? (
+                              <>
+                                <ChevronDown className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">{t.expand}</span>
+                              </>
+                            ) : (
+                              <>
+                                <ChevronUp className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">{t.minimize}</span>
+                              </>
+                            )}
+                          </button>
+
+                          {/* TOMBOL DELETE #2: HAPUS PER KARTU */}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSingleDropProof(drop)}
+                            title={t.deleteCard}
+                            className={`p-1.5 rounded-lg border transition ${
                               isDarkMode
-                                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200'
-                                : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300'
+                                ? 'bg-rose-500/15 hover:bg-rose-500/25 border-rose-500/40 text-rose-300'
+                                : 'bg-rose-50 hover:bg-rose-100 border-rose-300 text-rose-700'
                             }`}
                           >
-                            <Download className="w-3.5 h-3.5" />
-                            <span>Unduh Bukti</span>
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        )}
-
-                        {!isVerified && (
-                          <button
-                            type="button"
-                            disabled={verifyingDropId === drop.id}
-                            onClick={() => handleVerifyAndSaveDropProof(drop)}
-                            className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold flex items-center gap-1.5"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            <span>
-                              {verifyingDropId === drop.id
-                                ? 'Menyimpan...'
-                                : 'Simpan & Konfirmasi Bukti Diterima'}
-                            </span>
-                          </button>
-                        )}
+                        </div>
                       </div>
+
+                      {/* KONTEN DETAIL (DISEMBUNYIKAN SAAT MINIMIZE) */}
+                      {!isMinimized && (
+                        <>
+                          <div
+                            className={`p-2.5 rounded-lg border space-y-1 ${
+                              isDarkMode ? 'bg-slate-950/60 border-slate-800' : 'bg-white border-slate-200'
+                            }`}
+                          >
+                            <div>
+                              <span className={textMuted}>{t.receivedDate}: </span>
+                              <span className={`font-semibold ${textPrimary}`}>
+                                {formatDropReceivedDate(drop)}
+                              </span>
+                            </div>
+                            <div>
+                              <span className={textMuted}>{t.collateralUnit}: </span>
+                              <span className={`font-semibold ${textPrimary}`}>
+                                {drop.collateral_desc || '-'}
+                              </span>
+                            </div>
+                            {drop.drop_note && (
+                              <div>
+                                <span className={textMuted}>{t.dropNote}: </span>
+                                <span className={`font-medium ${isDarkMode ? 'text-sky-300' : 'text-sky-700'}`}>
+                                  {drop.drop_note}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {drop.proof_image && (
+                            <div className="space-y-1">
+                              <span className={`text-[11px] block ${textMuted}`}>
+                                {t.dropPhotoLabel}
+                              </span>
+                              <img
+                                src={drop.proof_image}
+                                alt="Bukti Drop Jaminan"
+                                className={`w-full max-h-60 object-contain rounded-lg border ${
+                                  isDarkMode ? 'border-slate-700 bg-black' : 'border-slate-300 bg-slate-100'
+                                }`}
+                              />
+                            </div>
+                          )}
+
+                          <div className={`flex flex-wrap items-center justify-end gap-2 pt-2 border-t ${borderDivider}`}>
+                            {drop.proof_image && (
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadDropProofImage(drop)}
+                                className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 ${secondaryBtnClass}`}
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                <span>{t.downloadProof}</span>
+                              </button>
+                            )}
+
+                            {!isVerified && (
+                              <button
+                                type="button"
+                                disabled={verifyingDropId === drop.id}
+                                onClick={() => handleVerifyAndSaveDropProof(drop)}
+                                className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold flex items-center gap-1.5"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>
+                                  {verifyingDropId === drop.id ? t.saving : t.confirmSaveProof}
+                                </span>
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )}
                     </div>
                   );
                 })}
@@ -1791,69 +2523,103 @@ export default function QrLoanHub({
 
       {/* MODAL: DAFTAR TRANSFER MASUK */}
       {showTransferNotifModal && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="max-w-lg w-full max-h-[85vh] overflow-y-auto bg-[#0c2119] border border-sky-600/80 rounded-2xl p-5 space-y-4 text-emerald-50">
-            <div className="flex items-center justify-between border-b border-emerald-800/70 pb-3">
+        <div
+          dir={isRtl ? 'rtl' : 'ltr'}
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div
+            className={`max-w-lg w-full max-h-[85vh] overflow-y-auto border rounded-2xl p-5 space-y-4 shadow-2xl ${
+              isDarkMode
+                ? 'bg-[#0c2119] border-sky-600/80 text-emerald-50'
+                : 'bg-white border-sky-400 text-slate-900'
+            }`}
+          >
+            <div className={`flex items-center justify-between border-b pb-3 ${borderDivider}`}>
               <div>
-                <h3 className="text-base font-bold text-white">
-                  Laporan Transfer Cicilan ({pendingInstallmentReports.length})
+                <h3 className={`text-base font-bold ${textPrimary}`}>
+                  {t.transferModalTitle} ({pendingInstallmentReports.length})
                 </h3>
-                <p className="text-[11px] text-emerald-200/75">
-                  Cek mutasi rekening Anda, lalu klik Konfirmasi agar saldo tiket peminjam otomatis terupdate.
+                <p className={`text-[11px] ${isDarkMode ? 'text-emerald-200/75' : 'text-slate-600'}`}>
+                  {t.transferModalSub}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowTransferNotifModal(false)}
-                className="px-2.5 py-1 rounded-lg bg-[#071510] border border-emerald-700 text-xs text-emerald-300"
+                className={`px-2.5 py-1 rounded-lg border text-xs font-bold ${secondaryBtnClass}`}
               >
                 ✕
               </button>
             </div>
 
             {pendingInstallmentReports.length === 0 ? (
-              <div className="py-8 text-center text-xs text-emerald-300/80">
-                Semua laporan transfer sudah diverifikasi.
+              <div className={`py-8 text-center text-xs ${isDarkMode ? 'text-emerald-300/80' : 'text-emerald-700'}`}>
+                {t.allTransfersVerified}
               </div>
             ) : (
               <div className="space-y-3">
                 {pendingInstallmentReports.map((rep) => (
                   <div
                     key={rep.id}
-                    className="p-3.5 rounded-xl bg-[#071510] border border-emerald-800/80 space-y-2.5 text-xs"
+                    className={`p-3.5 rounded-xl border space-y-2.5 text-xs ${
+                      isDarkMode
+                        ? 'bg-[#071510] border-emerald-800/80'
+                        : 'bg-slate-50 border-slate-200'
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <div className="font-bold text-white text-sm">{rep.borrowerName}</div>
-                        <div className="text-[11px] text-emerald-400 font-mono">
+                        <div className={`font-bold text-sm ${textPrimary}`}>{rep.borrowerName}</div>
+                        <div className={`text-[11px] font-mono ${isDarkMode ? 'text-emerald-400' : 'text-emerald-700'}`}>
                           Tiket: {rep.applicationId}
                         </div>
                       </div>
-                      <span className="px-2.5 py-1 rounded-full bg-sky-950 border border-sky-600 text-sky-300 font-semibold text-[11px]">
-                        Angsuran ke-{rep.installmentNumber}
+                      <span
+                        className={`px-2.5 py-1 rounded-full border font-semibold text-[11px] ${
+                          isDarkMode
+                            ? 'bg-sky-950 border-sky-600 text-sky-300'
+                            : 'bg-sky-100 border-sky-300 text-sky-800'
+                        }`}
+                      >
+                        {t.installmentTo}
+                        {rep.installmentNumber}
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-[#0c2119] border border-emerald-800/60">
+                    <div
+                      className={`grid grid-cols-2 gap-2 p-2.5 rounded-lg border ${
+                        isDarkMode
+                          ? 'bg-[#0c2119] border-emerald-800/60'
+                          : 'bg-white border-slate-200'
+                      }`}
+                    >
                       <div>
-                        <span className="text-[11px] text-emerald-400/80 block">Nominal Transfer:</span>
-                        <span className="font-bold text-emerald-300 text-sm">
+                        <span className={`text-[11px] block ${isDarkMode ? 'text-emerald-400/80' : 'text-slate-500'}`}>
+                          {t.transferAmount}
+                        </span>
+                        <span className={`font-bold text-sm ${isDarkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>
                           {rep.currency} {Number(rep.amount || 0).toLocaleString('id-ID')}
                         </span>
                       </div>
                       <div>
-                        <span className="text-[11px] text-emerald-400/80 block">Via / Rekening:</span>
-                        <span className="text-white font-semibold">{rep.transferMethod || '-'}</span>
+                        <span className={`text-[11px] block ${isDarkMode ? 'text-emerald-400/80' : 'text-slate-500'}`}>
+                          {t.viaAccount}
+                        </span>
+                        <span className={`font-semibold ${textPrimary}`}>{rep.transferMethod || '-'}</span>
                       </div>
                     </div>
 
                     {rep.proofImage && (
                       <div className="space-y-1">
-                        <div className="text-[11px] text-emerald-300">Lampiran Foto Bukti Struk:</div>
+                        <div className={`text-[11px] ${isDarkMode ? 'text-emerald-300' : 'text-slate-700'}`}>
+                          {t.receiptPhotoLabel}
+                        </div>
                         <img
                           src={rep.proofImage}
                           alt="Bukti Transfer"
-                          className="w-full max-h-56 object-contain rounded-lg border border-emerald-800 bg-black"
+                          className={`w-full max-h-56 object-contain rounded-lg border ${
+                            isDarkMode ? 'border-emerald-800 bg-black' : 'border-slate-300 bg-slate-100'
+                          }`}
                         />
                       </div>
                     )}
@@ -1865,9 +2631,7 @@ export default function QrLoanHub({
                         onClick={() => handleConfirmTransferFromBorrower(rep)}
                         className="w-full py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs transition-colors"
                       >
-                        {verifyingReportId === rep.id
-                          ? 'Memverifikasi...'
-                          : '✓ Mutasi Masuk — Konfirmasi & Update Tiket'}
+                        {verifyingReportId === rep.id ? t.verifying : t.confirmMutationBtn}
                       </button>
                     </div>
                   </div>
@@ -1878,33 +2642,48 @@ export default function QrLoanHub({
         </div>
       )}
 
-      {/* MODAL: QR CODE GENERATOR + POSTER CUSTOM TEKS */}
+      {/* MODAL: QR CODE GENERATOR + POSTER CUSTOM TEKS (FULL LIGHT & DARK MODE) */}
       {showQrModal && (
-        <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className={`border rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto p-5 space-y-4 shadow-2xl ${modalBg}`}>
-            <div className="flex items-center justify-between border-b border-slate-700/60 pb-3">
+        <div
+          dir={isRtl ? 'rtl' : 'ltr'}
+          className="fixed inset-0 z-[999] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div className={`border rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto p-5 space-y-4 shadow-2xl ${effectiveModalBg}`}>
+            <div className={`flex items-center justify-between border-b pb-3 ${borderDivider}`}>
               <div>
-                <h3 className={`text-base font-bold flex items-center gap-2 ${themeStyle.textAccent}`}>
-                  <QrCode className="w-5 h-5" /> QR Code Pengajuan Pinjaman
+                <h3
+                  className={`text-base font-bold flex items-center gap-2 ${
+                    isDarkMode ? themeStyle.textAccent : 'text-emerald-700'
+                  }`}
+                >
+                  <QrCode className="w-5 h-5" /> {t.qrModalTitle}
                 </h3>
-                <span className="text-[10px] text-emerald-400/80">
-                  Khusus Wilayah & Transaksi Indonesia
+                <span className={`text-[10px] font-medium ${isDarkMode ? 'text-emerald-400/85' : 'text-emerald-700'}`}>
+                  {t.qrModalSub}
                 </span>
               </div>
-              <button type="button" onClick={() => setShowQrModal(false)} className="text-slate-400 hover:text-white">
+              <button type="button" onClick={() => setShowQrModal(false)} className={closeBtnClass}>
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {loadingQr || !qrLinkData ? (
-              <div className="py-10 text-center text-xs text-slate-400">Menyiapkan QR Code...</div>
+              <div className={`py-10 text-center text-xs ${textMuted}`}>{t.preparingQr}</div>
             ) : (
               <>
-                <div className={`flex flex-col items-center gap-2.5 p-4 rounded-xl border ${bgInnerBox}`}>
-                  <div className="text-xs font-extrabold text-emerald-300 text-center tracking-wide">
+                <div className={`flex flex-col items-center gap-2.5 p-4 rounded-xl border ${effectiveInnerBox}`}>
+                  <div
+                    className={`text-xs font-extrabold text-center tracking-wide ${
+                      isDarkMode ? 'text-emerald-300' : 'text-emerald-800'
+                    }`}
+                  >
                     {qrPosterTitle || 'SCAN QR PENGAJUAN PINJAMAN'}
                   </div>
-                  <div className="bg-white p-3 rounded-xl shadow">
+                  <div
+                    className={`bg-white p-3 rounded-xl ${
+                      isDarkMode ? 'shadow' : 'border border-slate-200 shadow-sm'
+                    }`}
+                  >
                     <QRCodeCanvas
                       id="wgen-loan-qr-canvas"
                       value={`${PUBLIC_WEB_ORIGIN}/apply?token=${qrLinkData.token}`}
@@ -1915,9 +2694,15 @@ export default function QrLoanHub({
                       includeMargin={true}
                     />
                   </div>
-                  <span className="text-xs font-mono font-bold text-emerald-400">{qrLinkData.token}</span>
+                  <span
+                    className={`text-xs font-mono font-bold ${
+                      isDarkMode ? 'text-emerald-400' : 'text-emerald-700'
+                    }`}
+                  >
+                    {qrLinkData.token}
+                  </span>
                   {qrPosterSubtitle && (
-                    <p className="text-[11px] text-slate-300 text-center max-w-xs leading-snug">
+                    <p className={`text-[11px] text-center max-w-xs leading-snug ${textSecondary}`}>
                       {qrPosterSubtitle}
                     </p>
                   )}
@@ -1926,17 +2711,25 @@ export default function QrLoanHub({
                     readOnly
                     value={`${PUBLIC_WEB_ORIGIN}/apply?token=${qrLinkData.token}`}
                     onClick={(e) => e.target.select()}
-                    className={`w-full px-3 py-1.5 rounded-lg text-[11px] text-center border ${inputBg}`}
+                    className={`w-full px-3 py-1.5 rounded-lg text-[11px] text-center border ${effectiveInputBg}`}
                   />
                 </div>
 
                 {/* EDIT KATA-KATA PADA GAMBAR QR SAAT DI-DOWNLOAD */}
-                <div className="w-full text-left space-y-2 p-3 rounded-xl bg-slate-900/60 border border-slate-700/60">
-                  <div className="text-[11px] font-bold text-emerald-300">
-                    Teks Poster QR (Ikut Tercetak Saat Download PNG):
+                <div
+                  className={`w-full text-left space-y-2 p-3 rounded-xl border ${
+                    isDarkMode
+                      ? 'bg-slate-900/60 border-slate-700/60'
+                      : 'bg-slate-100 border-slate-300'
+                  }`}
+                >
+                  <div className={`text-[11px] font-bold ${isDarkMode ? 'text-emerald-300' : 'text-emerald-800'}`}>
+                    {t.posterSectionTitle}
                   </div>
                   <div>
-                    <label className="text-[10px] text-slate-400 block mb-1">Judul Atas QR:</label>
+                    <label className={`text-[10px] block mb-1 font-medium ${textSecondary}`}>
+                      {t.posterTopLabel}
+                    </label>
                     <input
                       type="text"
                       value={qrPosterTitle}
@@ -1945,11 +2738,13 @@ export default function QrLoanHub({
                         localStorage.setItem('wgen_qr_poster_title', e.target.value);
                       }}
                       placeholder="Contoh: SCAN QR PENGAJUAN PINJAMAN"
-                      className={`w-full px-3 py-1.5 rounded-lg text-xs border ${inputBg}`}
+                      className={`w-full px-3 py-1.5 rounded-lg text-xs border ${effectiveInputBg}`}
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] text-slate-400 block mb-1">Catatan / Keterangan Bawah QR:</label>
+                    <label className={`text-[10px] block mb-1 font-medium ${textSecondary}`}>
+                      {t.posterBottomLabel}
+                    </label>
                     <input
                       type="text"
                       value={qrPosterSubtitle}
@@ -1958,14 +2753,14 @@ export default function QrLoanHub({
                         localStorage.setItem('wgen_qr_poster_subtitle', e.target.value);
                       }}
                       placeholder="Contoh: Hubungi WA 0812xxx jika butuh bantuan..."
-                      className={`w-full px-3 py-1.5 rounded-lg text-xs border ${inputBg}`}
+                      className={`w-full px-3 py-1.5 rounded-lg text-xs border ${effectiveInputBg}`}
                     />
                   </div>
                 </div>
 
                 <div className="w-full text-left space-y-1.5 pt-1">
-                  <label className="text-[11px] font-semibold text-slate-400">
-                    Rekening / E-Wallet Tujuan Pembayaran (Otomatis Tersimpan & Terisi Saat ACC):
+                  <label className={`text-[11px] font-semibold block ${textSecondary}`}>
+                    {t.paymentAccLabel}
                   </label>
                   <div className="flex gap-2">
                     <input
@@ -1978,7 +2773,7 @@ export default function QrLoanHub({
                         localStorage.setItem('wgen_default_payment_account', val);
                       }}
                       onBlur={(e) => handleSaveQrPaymentAccount(e.target.value, qrPaymentMethod)}
-                      className={`flex-1 px-3 py-1.5 rounded-lg text-xs border ${inputBg}`}
+                      className={`flex-1 px-3 py-1.5 rounded-lg text-xs border ${effectiveInputBg}`}
                     />
                     <button
                       type="button"
@@ -1988,7 +2783,7 @@ export default function QrLoanHub({
                       }}
                       className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shrink-0"
                     >
-                      Simpan
+                      {t.save}
                     </button>
                   </div>
                 </div>
@@ -2001,10 +2796,10 @@ export default function QrLoanHub({
                       setCopiedQrLink(true);
                       setTimeout(() => setCopiedQrLink(false), 2000);
                     }}
-                    className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold flex items-center justify-center gap-1.5"
+                    className={`py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5 ${secondaryBtnClass}`}
                   >
-                    {copiedQrLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                    <span>{copiedQrLink ? 'Tersalin!' : 'Salin Link'}</span>
+                    {copiedQrLink ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                    <span>{copiedQrLink ? t.copied : t.copyLink}</span>
                   </button>
                   <button
                     type="button"
@@ -2012,11 +2807,11 @@ export default function QrLoanHub({
                     className={`py-2.5 rounded-xl bg-gradient-to-r ${themeStyle.gradientBtn} text-white font-bold flex items-center justify-center gap-1.5`}
                   >
                     <Download className="w-4 h-4" />
-                    <span>Download QR + Teks</span>
+                    <span>{t.downloadQrText}</span>
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between pt-2 border-t border-slate-700/60 text-xs">
+                <div className={`flex items-center justify-between pt-2 border-t text-xs ${borderDivider}`}>
                   <button
                     type="button"
                     onClick={async () => {
@@ -2024,9 +2819,11 @@ export default function QrLoanHub({
                       await updateLenderQrSettings(qrLinkData.token, { isActive: nextActive });
                       setQrLinkData({ ...qrLinkData, is_active: nextActive ? 1 : 0 });
                     }}
-                    className="text-emerald-400 underline"
+                    className={`underline font-semibold ${
+                      isDarkMode ? 'text-emerald-400' : 'text-emerald-700'
+                    }`}
                   >
-                    {Number(qrLinkData.is_active) === 1 ? 'Nonaktifkan Link QR' : 'Aktifkan Link QR'}
+                    {Number(qrLinkData.is_active) === 1 ? t.disableQrLink : t.enableQrLink}
                   </button>
 
                   <button
@@ -2041,29 +2838,39 @@ export default function QrLoanHub({
                       });
                       setQrLinkData(fresh);
                     }}
-                    className="text-amber-400 underline"
+                    className={`underline font-semibold ${
+                      isDarkMode ? 'text-amber-400' : 'text-amber-700'
+                    }`}
                   >
-                    Buat Token Baru
+                    {t.newToken}
                   </button>
                 </div>
 
                 {/* SAKLAR MATIKAN / AKTIFKAN SEMUA FITUR QR, INBOX, BUKTI DROP & HOTLINE */}
-                <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-700/70 flex items-center justify-between gap-2 text-xs">
+                <div
+                  className={`p-3 rounded-xl border flex items-center justify-between gap-2 text-xs ${
+                    isDarkMode
+                      ? 'bg-slate-900/70 border-slate-700/70'
+                      : 'bg-slate-100 border-slate-300'
+                  }`}
+                >
                   <div>
-                    <div className="font-semibold text-slate-200 flex items-center gap-1.5">
-                      <Power className="w-3.5 h-3.5 text-rose-400" />
-                      <span>Status Fitur QR, Inbox, Bukti Drop & Hotline</span>
+                    <div className={`font-semibold flex items-center gap-1.5 ${textPrimary}`}>
+                      <Power className="w-3.5 h-3.5 text-rose-500" />
+                      <span>{t.featureStatusTitle}</span>
                     </div>
-                    <p className="text-[10px] text-slate-400">
-                      Matikan jika tidak digunakan untuk transaksi Indonesia.
-                    </p>
+                    <p className={`text-[10px] ${textMuted}`}>{t.featureStatusSub}</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleToggleQrFeature(false)}
-                    className="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 font-bold text-[11px]"
+                    className={`px-3 py-1.5 rounded-lg border font-bold text-[11px] shrink-0 ${
+                      isDarkMode
+                        ? 'bg-rose-600/20 hover:bg-rose-600/30 border-rose-500/40 text-rose-300'
+                        : 'bg-rose-50 hover:bg-rose-100 border-rose-300 text-rose-700'
+                    }`}
                   >
-                    Matikan Fitur
+                    {t.turnOffFeature}
                   </button>
                 </div>
               </>
@@ -2074,16 +2881,23 @@ export default function QrLoanHub({
 
       {/* MODAL: DAFTAR PENGAJUAN PINJAMAN MASUK */}
       {showInboxModal && (
-        <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className={`border rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-5 space-y-4 shadow-2xl ${modalBg}`}>
-            <div className="flex items-center justify-between gap-2 border-b border-slate-700/60 pb-3">
+        <div
+          dir={isRtl ? 'rtl' : 'ltr'}
+          className="fixed inset-0 z-[999] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div className={`border rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-5 space-y-4 shadow-2xl ${effectiveModalBg}`}>
+            <div className={`flex items-center justify-between gap-2 border-b pb-3 ${borderDivider}`}>
               <div>
-                <h3 className={`text-base font-bold flex items-center gap-2 ${themeStyle.textAccent}`}>
-                  <Inbox className="w-5 h-5" /> Pengajuan Masuk ({incomingApps.length})
+                <h3
+                  className={`text-base font-bold flex items-center gap-2 ${
+                    isDarkMode ? themeStyle.textAccent : 'text-emerald-700'
+                  }`}
+                >
+                  <Inbox className="w-5 h-5" /> {t.inboxTitle} ({incomingApps.length})
                 </h3>
                 {lastRefreshedAt && (
-                  <span className="text-[10px] text-slate-400">
-                    Terakhir diperbarui: {lastRefreshedAt.toLocaleTimeString('id-ID')}
+                  <span className={`text-[10px] ${textMuted}`}>
+                    {t.lastUpdated}: {lastRefreshedAt.toLocaleTimeString('id-ID')}
                   </span>
                 )}
               </div>
@@ -2094,16 +2908,20 @@ export default function QrLoanHub({
                   disabled={loadingInbox}
                   onClick={() => loadQrApplicationsAndReports('', true)}
                   title="Muat ulang pengajuan masuk"
-                  className="px-2.5 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50 transition"
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50 transition ${
+                    isDarkMode
+                      ? 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/35 text-emerald-300'
+                      : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-800'
+                  }`}
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${loadingInbox ? 'animate-spin' : ''}`} />
-                  <span>{loadingInbox ? 'Memuat...' : 'Refresh'}</span>
+                  <span>{loadingInbox ? t.loading : t.refresh}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setShowInboxModal(false)}
-                  className="text-slate-400 hover:text-white p-1"
+                  className={`p-1 ${closeBtnClass}`}
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -2111,20 +2929,18 @@ export default function QrLoanHub({
             </div>
 
             {loadingInbox && incomingApps.length === 0 ? (
-              <div className="py-10 text-center text-xs text-emerald-400 animate-pulse">
-                Memuat data pengajuan masuk...
+              <div className={`py-10 text-center text-xs animate-pulse ${isDarkMode ? 'text-emerald-400' : 'text-emerald-700'}`}>
+                {t.loadingApps}
               </div>
             ) : incomingApps.length === 0 ? (
               <div className="py-10 text-center space-y-2">
-                <div className="text-xs text-slate-400">
-                  Belum ada pengajuan baru yang menunggu persetujuan.
-                </div>
+                <div className={`text-xs ${textMuted}`}>{t.noPendingApps}</div>
                 <button
                   type="button"
                   onClick={() => loadQrApplicationsAndReports('', true)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-400 text-[11px] font-semibold inline-flex items-center gap-1.5"
+                  className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1.5 ${secondaryBtnClass}`}
                 >
-                  <RefreshCw className="w-3 h-3" /> Cek Ulang Sekarang
+                  <RefreshCw className="w-3 h-3" /> {t.checkAgain}
                 </button>
               </div>
             ) : (
@@ -2142,93 +2958,155 @@ export default function QrLoanHub({
                   const debtorSig = app.debtor_signature || app.debtorSignature || '';
 
                   return (
-                    <div key={app.id} className={`p-4 rounded-xl border space-y-2.5 text-xs ${bgInnerBox}`}>
+                    <div key={app.id} className={`p-4 rounded-xl border space-y-2.5 text-xs ${effectiveInnerBox}`}>
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-sm">
+                          <span className={`font-bold text-sm ${textPrimary}`}>
                             {app.borrower_name && String(app.borrower_name).trim().toLowerCase() !== ''
                               ? app.borrower_name
                               : 'Peminjam (Tanpa Nama)'}
                           </span>
                           {app.status === 'counter_offer' && (
-                            <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-semibold">
+                            <span
+                              className={`px-2 py-0.5 rounded border text-[10px] font-semibold ${
+                                isDarkMode
+                                  ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                                  : 'bg-amber-100 border-amber-300 text-amber-800'
+                              }`}
+                            >
                               Lelang Jasa • Tawaran Terkini: {app.reward_percent || 0}%
                             </span>
                           )}
                           {hasCounterPrincipal && (
-                            <span className="px-2 py-0.5 rounded bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-[10px] font-semibold">
+                            <span
+                              className={`px-2 py-0.5 rounded border text-[10px] font-semibold ${
+                                isDarkMode
+                                  ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300'
+                                  : 'bg-indigo-100 border-indigo-300 text-indigo-800'
+                              }`}
+                            >
                               Lelang Pokok: {app.currency} {Number(app.counter_principal_amount).toLocaleString('id-ID')}
                             </span>
                           )}
                         </div>
-                        <span className="font-mono font-bold text-emerald-400 text-sm">
+                        <span
+                          className={`font-mono font-bold text-sm ${
+                            isDarkMode ? 'text-emerald-400' : 'text-emerald-700'
+                          }`}
+                        >
                           {app.currency} {Number(app.requested_amount || 0).toLocaleString('id-ID')}
                         </span>
                       </div>
 
                       {app.status === 'tenor_offer' && (
-                        <span className="px-2 py-0.5 rounded bg-teal-500/20 border border-teal-500/40 text-teal-300 text-[10px] font-semibold">
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded border text-[10px] font-semibold ${
+                            isDarkMode
+                              ? 'bg-teal-500/20 border-teal-500/40 text-teal-300'
+                              : 'bg-teal-100 border-teal-300 text-teal-800'
+                          }`}
+                        >
                           Persetujuan Tenor Final: {app.approved_tenor_months || app.tenor_months} Bln (Menunggu Konfirmasi)
                         </span>
                       )}
 
                       {isBorrowerAgreed && (
-                        <span className="px-2 py-0.5 rounded bg-emerald-500/25 border border-emerald-400/60 text-emerald-300 text-[10px] font-bold">
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded border text-[10px] font-bold ${
+                            isDarkMode
+                              ? 'bg-emerald-500/25 border-emerald-400/60 text-emerald-300'
+                              : 'bg-emerald-100 border-emerald-400 text-emerald-800'
+                          }`}
+                        >
                           ✓ Debitur Setuju / Oke
                         </span>
                       )}
 
                       {isBorrowerRequestMore && (
-                        <span className="px-2 py-0.5 rounded bg-amber-500/25 border border-amber-400/60 text-amber-300 text-[10px] font-bold">
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded border text-[10px] font-bold ${
+                            isDarkMode
+                              ? 'bg-amber-500/25 border-amber-400/60 text-amber-300'
+                              : 'bg-amber-100 border-amber-400 text-amber-800'
+                          }`}
+                        >
                           ↑ Minta Tambah Pokok
                         </span>
                       )}
 
-                      <div className="text-slate-400 space-y-1">
+                      <div className={`space-y-1 ${textMuted}`}>
                         <div>
-                          HP: <span className="text-slate-200">{app.borrower_phone}</span> • Tenor:{' '}
-                          <span className="text-slate-200">{app.tenor_months} bln</span> (
+                          HP: <span className={`font-medium ${textPrimary}`}>{app.borrower_phone}</span> • Tenor:{' '}
+                          <span className={`font-medium ${textPrimary}`}>{app.tenor_months} bln</span> (
                           {Number(app.is_installment) === 1 ? 'Cicilan' : 'Sekali Bayar'}) • Imbalan Jasa:{' '}
-                          <span className="text-emerald-300 font-semibold">{app.reward_percent || 20}%</span>
+                          <span className={`font-semibold ${isDarkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>
+                            {app.reward_percent || 20}%
+                          </span>
                         </div>
                         <div>
                           Jaminan:{' '}
-                          <span className="text-slate-200 font-medium">
+                          <span className={`font-medium ${textPrimary}`}>
                             {Number(app.has_collateral) === 1 ? app.collateral_desc || 'Ada' : 'Tanpa Jaminan'}
                           </span>
                         </div>
                         {app.collateral_feedback && (
-                          <div className="p-2 rounded bg-emerald-950/50 border border-emerald-700/50 text-emerald-200 text-[11px]">
+                          <div
+                            className={`p-2 rounded border text-[11px] ${
+                              isDarkMode
+                                ? 'bg-emerald-950/50 border-emerald-700/50 text-emerald-200'
+                                : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                            }`}
+                          >
                             <strong>Status Jaminan:</strong> {app.collateral_feedback}
                           </div>
                         )}
-                        {app.notes && <div className="text-slate-300">Catatan: {app.notes}</div>}
+                        {app.notes && <div className={textSecondary}>Catatan: {app.notes}</div>}
                       </div>
 
                       {/* Preview Lampiran Sidik Jari & Tanda Tangan Debitur */}
                       {(debtorFp || debtorSig) && (
                         <div className="grid grid-cols-2 gap-2 pt-1">
                           {debtorFp && (
-                            <div className="p-2 rounded-lg bg-slate-950/60 border border-emerald-800/50 space-y-1">
-                              <span className="block text-[10px] text-emerald-400 font-semibold">
+                            <div
+                              className={`p-2 rounded-lg border space-y-1 ${
+                                isDarkMode
+                                  ? 'bg-slate-950/60 border-emerald-800/50'
+                                  : 'bg-white border-emerald-200'
+                              }`}
+                            >
+                              <span
+                                className={`block text-[10px] font-semibold ${
+                                  isDarkMode ? 'text-emerald-400' : 'text-emerald-700'
+                                }`}
+                              >
                                 Cap Sidik Jari Debitur:
                               </span>
                               <img
                                 src={debtorFp}
                                 alt="Debtor Fingerprint"
-                                className="w-full h-16 object-contain rounded bg-white p-1"
+                                className="w-full h-16 object-contain rounded bg-white p-1 border border-slate-200"
                               />
                             </div>
                           )}
                           {debtorSig && (
-                            <div className="p-2 rounded-lg bg-slate-950/60 border border-emerald-800/50 space-y-1">
-                              <span className="block text-[10px] text-emerald-400 font-semibold">
+                            <div
+                              className={`p-2 rounded-lg border space-y-1 ${
+                                isDarkMode
+                                  ? 'bg-slate-950/60 border-emerald-800/50'
+                                  : 'bg-white border-emerald-200'
+                              }`}
+                            >
+                              <span
+                                className={`block text-[10px] font-semibold ${
+                                  isDarkMode ? 'text-emerald-400' : 'text-emerald-700'
+                                }`}
+                              >
                                 Tanda Tangan Debitur:
                               </span>
                               <img
                                 src={debtorSig}
                                 alt="Debtor Signature"
-                                className="w-full h-16 object-contain rounded bg-white p-1"
+                                className="w-full h-16 object-contain rounded bg-white p-1 border border-slate-200"
                               />
                             </div>
                           )}
@@ -2236,17 +3114,27 @@ export default function QrLoanHub({
                       )}
 
                       {app.borrower_reply_note && (
-                        <div className="p-2 rounded bg-amber-950/50 border border-amber-700/50 text-amber-200 text-[11px]">
+                        <div
+                          className={`p-2 rounded border text-[11px] ${
+                            isDarkMode
+                              ? 'bg-amber-950/50 border-amber-700/50 text-amber-200'
+                              : 'bg-amber-50 border-amber-300 text-amber-900'
+                          }`}
+                        >
                           <strong>Permintaan / Balasan Debitur:</strong> {app.borrower_reply_note}
                         </div>
                       )}
 
-                      <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-700/50">
+                      <div className={`flex flex-wrap items-center justify-end gap-2 pt-2 border-t ${borderDivider}`}>
                         {Number(app.has_collateral) === 1 ? (
                           <button
                             type="button"
                             onClick={() => openActionModal('collateral_drop', app)}
-                            className="px-2.5 py-1.5 rounded-lg bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/40 text-sky-300 font-semibold"
+                            className={`px-2.5 py-1.5 rounded-lg border font-semibold ${
+                              isDarkMode
+                                ? 'bg-sky-600/20 hover:bg-sky-600/30 border-sky-500/40 text-sky-300'
+                                : 'bg-sky-50 hover:bg-sky-100 border-sky-300 text-sky-800'
+                            }`}
                           >
                             Jaminan & Alamat Drop
                           </button>
@@ -2254,7 +3142,11 @@ export default function QrLoanHub({
                           <button
                             type="button"
                             onClick={() => openActionModal('upgrade_collateral', app)}
-                            className="px-2.5 py-1.5 rounded-lg bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/40 text-sky-300 font-semibold"
+                            className={`px-2.5 py-1.5 rounded-lg border font-semibold ${
+                              isDarkMode
+                                ? 'bg-sky-600/20 hover:bg-sky-600/30 border-sky-500/40 text-sky-300'
+                                : 'bg-sky-50 hover:bg-sky-100 border-sky-300 text-sky-800'
+                            }`}
                           >
                             ★ Minta Upgrade Jaminan
                           </button>
@@ -2263,7 +3155,11 @@ export default function QrLoanHub({
                         <button
                           type="button"
                           onClick={() => openActionModal('counter_offer', app)}
-                          className="px-2.5 py-1.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 font-semibold"
+                          className={`px-2.5 py-1.5 rounded-lg border font-semibold ${
+                            isDarkMode
+                              ? 'bg-amber-600/20 hover:bg-amber-600/30 border-amber-500/40 text-amber-300'
+                              : 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-800'
+                          }`}
                         >
                           Lelang Jasa
                         </button>
@@ -2271,7 +3167,11 @@ export default function QrLoanHub({
                         <button
                           type="button"
                           onClick={() => openActionModal('principal_offer', app)}
-                          className="px-2.5 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 font-semibold"
+                          className={`px-2.5 py-1.5 rounded-lg border font-semibold ${
+                            isDarkMode
+                              ? 'bg-indigo-600/20 hover:bg-indigo-600/30 border-indigo-500/40 text-indigo-300'
+                              : 'bg-indigo-50 hover:bg-indigo-100 border-indigo-300 text-indigo-800'
+                          }`}
                         >
                           Lelang Pokok
                         </button>
@@ -2279,7 +3179,11 @@ export default function QrLoanHub({
                         <button
                           type="button"
                           onClick={() => openActionModal('tenor_approval', app)}
-                          className="px-2.5 py-1.5 rounded-lg bg-teal-600/20 hover:bg-teal-600/30 border border-teal-500/40 text-teal-300 font-semibold"
+                          className={`px-2.5 py-1.5 rounded-lg border font-semibold ${
+                            isDarkMode
+                              ? 'bg-teal-600/20 hover:bg-teal-600/30 border-teal-500/40 text-teal-300'
+                              : 'bg-teal-50 hover:bg-teal-100 border-teal-300 text-teal-800'
+                          }`}
                         >
                           Persetujuan Tenor
                         </button>
@@ -2287,7 +3191,11 @@ export default function QrLoanHub({
                         <button
                           type="button"
                           onClick={() => openActionModal('rejected', app)}
-                          className="px-2.5 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-400 font-semibold"
+                          className={`px-2.5 py-1.5 rounded-lg border font-semibold ${
+                            isDarkMode
+                              ? 'bg-rose-600/20 hover:bg-rose-600/30 border-rose-500/40 text-rose-400'
+                              : 'bg-rose-50 hover:bg-rose-100 border-rose-300 text-rose-700'
+                          }`}
                         >
                           Tolak
                         </button>
@@ -2295,7 +3203,11 @@ export default function QrLoanHub({
                         <button
                           type="button"
                           onClick={() => openActionModal('approved', app)}
-                          className="px-2.5 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 font-semibold"
+                          className={`px-2.5 py-1.5 rounded-lg border font-semibold ${
+                            isDarkMode
+                              ? 'bg-emerald-600/20 hover:bg-emerald-600/30 border-emerald-500/40 text-emerald-300'
+                              : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-800'
+                          }`}
                         >
                           WA Info ACC
                         </button>
@@ -2319,10 +3231,13 @@ export default function QrLoanHub({
 
       {/* MODAL AKSI: FEEDBACK JAMINAN / DROP / LELANG / TEMPLATE WA */}
       {actionModal.open && actionModal.app && (
-        <div className="fixed inset-0 z-[1000] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className={`border rounded-2xl max-w-lg w-full max-h-[88vh] overflow-y-auto p-5 space-y-4 shadow-2xl ${modalBg}`}>
-            <div className="flex items-center justify-between border-b border-slate-700/60 pb-3">
-              <h4 className="text-sm font-bold text-white">
+        <div
+          dir={isRtl ? 'rtl' : 'ltr'}
+          className="fixed inset-0 z-[1000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div className={`border rounded-2xl max-w-lg w-full max-h-[88vh] overflow-y-auto p-5 space-y-4 shadow-2xl ${effectiveModalBg}`}>
+            <div className={`flex items-center justify-between border-b pb-3 ${borderDivider}`}>
+              <h4 className={`text-sm font-bold ${textPrimary}`}>
                 {actionModal.type === 'collateral_drop' && 'Feedback & Serah Terima / Drop Jaminan'}
                 {actionModal.type === 'counter_offer' && 'Sistem Lelang Imbalan Jasa (Minta Penawaran Ulang)'}
                 {actionModal.type === 'principal_offer' && 'Sistem Lelang Pokok Pinjaman (Tentukan Nominal Pokok)'}
@@ -2334,7 +3249,7 @@ export default function QrLoanHub({
               <button
                 type="button"
                 onClick={() => setActionModal((prev) => ({ ...prev, open: false }))}
-                className="text-slate-400 hover:text-white"
+                className={closeBtnClass}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -2343,7 +3258,13 @@ export default function QrLoanHub({
             <div className="space-y-3 text-xs">
               {actionModal.type === 'collateral_drop' && (
                 <>
-                  <label className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-950/50 border border-emerald-700/60 cursor-pointer text-emerald-200 font-semibold">
+                  <label
+                    className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer font-semibold ${
+                      isDarkMode
+                        ? 'bg-emerald-950/50 border-emerald-700/60 text-emerald-200'
+                        : 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                    }`}
+                  >
                     <input
                       type="checkbox"
                       checked={actionModal.collateralReceived}
@@ -2368,7 +3289,9 @@ export default function QrLoanHub({
                   </label>
 
                   <div>
-                    <label className="block text-slate-300 mb-1">Catatan / Feedback Kondisi Jaminan:</label>
+                    <label className={`block mb-1 font-medium ${textSecondary}`}>
+                      Catatan / Feedback Kondisi Jaminan:
+                    </label>
                     <input
                       type="text"
                       value={actionModal.collateralNote}
@@ -2383,12 +3306,12 @@ export default function QrLoanHub({
                           })
                         }));
                       }}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white"
+                      className={`w-full px-3 py-2 rounded-lg border ${effectiveInputBg}`}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-300 mb-1">
+                    <label className={`block mb-1 font-medium ${textSecondary}`}>
                       Alamat Drop-Off / Titip Jaminan (Bisa diedit manual jika tidak di rumah):
                     </label>
                     <textarea
@@ -2405,7 +3328,7 @@ export default function QrLoanHub({
                           })
                         }));
                       }}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white"
+                      className={`w-full px-3 py-2 rounded-lg border ${effectiveInputBg}`}
                     />
                   </div>
                 </>
@@ -2415,15 +3338,25 @@ export default function QrLoanHub({
                 const limits = getAppContractLimits(actionModal.app);
                 return (
                   <div className="space-y-2.5">
-                    <div className="p-2.5 rounded-lg bg-indigo-950/60 border border-indigo-500/40 text-[11px] text-indigo-200 flex flex-wrap items-center justify-between gap-1">
+                    <div
+                      className={`p-2.5 rounded-lg border text-[11px] flex flex-wrap items-center justify-between gap-1 ${
+                        isDarkMode
+                          ? 'bg-indigo-950/60 border-indigo-500/40 text-indigo-200'
+                          : 'bg-indigo-50 border-indigo-300 text-indigo-900'
+                      }`}
+                    >
                       <span className="font-bold">{limits.contractLabel}</span>
-                      <span className="font-mono font-semibold text-emerald-300">
+                      <span
+                        className={`font-mono font-semibold ${
+                          isDarkMode ? 'text-emerald-300' : 'text-emerald-700'
+                        }`}
+                      >
                         Batas: {limits.cleanCurr} {limits.minVal.toLocaleString('id-ID')} – {limits.maxVal.toLocaleString('id-ID')}
                       </span>
                     </div>
 
                     <div>
-                      <label className="block text-slate-300 mb-1">
+                      <label className={`block mb-1 font-medium ${textSecondary}`}>
                         Nominal Pokok Tawaran / Lelang ({limits.cleanCurr}):
                       </label>
                       <input
@@ -2444,12 +3377,14 @@ export default function QrLoanHub({
                             })
                           }));
                         }}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-indigo-500/60 text-white font-bold"
+                        className={`w-full px-3 py-2 rounded-lg border font-bold ${effectiveInputBg}`}
                       />
                     </div>
 
                     <div>
-                      <label className="block text-slate-300 mb-1">Catatan / Syarat Lelang Pokok:</label>
+                      <label className={`block mb-1 font-medium ${textSecondary}`}>
+                        Catatan / Syarat Lelang Pokok:
+                      </label>
                       <textarea
                         rows={2}
                         value={actionModal.reasonText}
@@ -2464,7 +3399,7 @@ export default function QrLoanHub({
                             })
                           }));
                         }}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white"
+                        className={`w-full px-3 py-2 rounded-lg border ${effectiveInputBg}`}
                       />
                     </div>
                   </div>
@@ -2499,15 +3434,25 @@ export default function QrLoanHub({
 
                 return (
                   <div className="space-y-2.5">
-                    <div className="p-2.5 rounded-lg bg-teal-950/60 border border-teal-500/40 text-[11px] text-teal-200 flex flex-wrap items-center justify-between gap-1">
+                    <div
+                      className={`p-2.5 rounded-lg border text-[11px] flex flex-wrap items-center justify-between gap-1 ${
+                        isDarkMode
+                          ? 'bg-teal-950/60 border-teal-500/40 text-teal-200'
+                          : 'bg-teal-50 border-teal-300 text-teal-900'
+                      }`}
+                    >
                       <span className="font-bold">{limits.contractLabel}</span>
-                      <span className="font-mono font-semibold text-emerald-300">
+                      <span
+                        className={`font-mono font-semibold ${
+                          isDarkMode ? 'text-emerald-300' : 'text-emerald-700'
+                        }`}
+                      >
                         Tenor Final: 1 – 12 Bulan (YES / NO)
                       </span>
                     </div>
 
                     <div>
-                      <label className="block text-slate-300 mb-1">
+                      <label className={`block mb-1 font-medium ${textSecondary}`}>
                         Tenor Final yang Disetujui (Bulan):
                       </label>
                       <input
@@ -2518,12 +3463,12 @@ export default function QrLoanHub({
                         placeholder="Contoh: 3"
                         value={actionModal.offeredTenor}
                         onChange={(e) => handleTenorChange(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-teal-500/60 text-white font-bold"
+                        className={`w-full px-3 py-2 rounded-lg border font-bold ${effectiveInputBg}`}
                       />
                     </div>
 
                     <div>
-                      <label className="block text-slate-300 mb-1">
+                      <label className={`block mb-1 font-medium ${textSecondary}`}>
                         Catatan / Ketentuan Tenor Final:
                       </label>
                       <textarea
@@ -2532,7 +3477,7 @@ export default function QrLoanHub({
                         onChange={(e) =>
                           handleTenorChange(actionModal.offeredTenor || '1', e.target.value)
                         }
-                        className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white"
+                        className={`w-full px-3 py-2 rounded-lg border ${effectiveInputBg}`}
                       />
                     </div>
                   </div>
@@ -2541,7 +3486,7 @@ export default function QrLoanHub({
 
               {(actionModal.type === 'counter_offer' || actionModal.type === 'rejected') && (
                 <div>
-                  <label className="block text-slate-300 mb-1">
+                  <label className={`block mb-1 font-medium ${textSecondary}`}>
                     {actionModal.type === 'counter_offer'
                       ? 'Pesan Penawaran Ulang Imbalan Jasa (Muncul di Link Peminjam):'
                       : 'Alasan Penolakan:'}
@@ -2557,18 +3502,22 @@ export default function QrLoanHub({
                         waMessage: buildWaMessage(prev.type, prev.app, { reasonText: val })
                       }));
                     }}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white"
+                    className={`w-full px-3 py-2 rounded-lg border ${effectiveInputBg}`}
                   />
                 </div>
               )}
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-slate-300 font-semibold">Preview Pesan WhatsApp (Bisa Diedit Manual):</label>
+                  <label className={`font-semibold ${textSecondary}`}>
+                    Preview Pesan WhatsApp (Bisa Diedit Manual):
+                  </label>
                   <button
                     type="button"
                     onClick={handleSaveCurrentAsTemplate}
-                    className="text-[11px] text-emerald-400 hover:underline"
+                    className={`text-[11px] hover:underline font-medium ${
+                      isDarkMode ? 'text-emerald-400' : 'text-emerald-700'
+                    }`}
                   >
                     Simpan Jadi Template Default
                   </button>
@@ -2577,22 +3526,22 @@ export default function QrLoanHub({
                   rows={5}
                   value={actionModal.waMessage}
                   onChange={(e) => setActionModal((prev) => ({ ...prev, waMessage: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-emerald-700/60 text-white font-sans leading-relaxed"
+                  className={`w-full px-3 py-2 rounded-lg border font-sans leading-relaxed ${effectiveInputBg}`}
                 />
-                <div className="text-[10px] text-slate-400 mt-1">
+                <div className={`text-[10px] mt-1 ${textMuted}`}>
                   Variabel otomatis: {'{nama}'}, {'{nominal}'}, {'{pokok}'}, {'{jasa}'}, {'{tenor}'}, {'{jaminan}'}, {'{alamat_drop}'}, {'{link_status}'}
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-700/60">
+            <div className={`flex flex-wrap items-center justify-end gap-2 pt-2 border-t ${borderDivider}`}>
               {actionModal.type !== 'approved' && (
                 <button
                   type="button"
                   onClick={() => handleConfirmActionModal(false)}
-                  className="px-3.5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold"
+                  className={`px-3.5 py-2 rounded-lg text-xs font-semibold ${secondaryBtnClass}`}
                 >
-                  Simpan ke Link Saja
+                  {t.saveToLinkOnly}
                 </button>
               )}
               <button
@@ -2600,12 +3549,12 @@ export default function QrLoanHub({
                 onClick={() => handleConfirmActionModal(true)}
                 className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold"
               >
-                {actionModal.type === 'approved' ? 'Buka WhatsApp & Kirim Info ACC' : 'Simpan & Kirim via WhatsApp'}
+                {actionModal.type === 'approved' ? t.openWaAcc : t.saveSendWa}
               </button>
             </div>
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
