@@ -35,6 +35,7 @@ import { showConfirm } from './lib/dialog';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { sendAndroidLocalNotif } from './lib/androidNotifier';
 
 const PUBLIC_WEB_ORIGIN =
   window.location.hostname === 'localhost' && !window.Capacitor
@@ -876,30 +877,43 @@ export default function QrLoanHub({
           : Promise.resolve([])
       ]);
 
-      setIncomingApps(
-        allRows.filter((row) => {
-          const st = String(row.status || '').toLowerCase().trim();
-          return st !== 'approved' && st !== 'rejected';
-        })
-      );
+      const activeApps = allRows.filter((row) => {
+        const st = String(row.status || '').toLowerCase().trim();
+        return st !== 'approved' && st !== 'rejected';
+      });
 
-      setAgreedAppsNotif(
-        allRows.filter((row) => {
-          const st = String(row.status || '').toLowerCase().trim();
-          if (st === 'approved' || st === 'rejected') return false;
-          return isRowBorrowerAgreed(row) || isRowBorrowerCounter(row);
-        })
-      );
-
-      let cachedLocalDrops = [];
+      // === TRIGGER NOTIFIKASI ANDROID UNTUK PENGAJUAN BARU ===
+      let notifiedAppIds = [];
       try {
-        cachedLocalDrops = JSON.parse(
-          localStorage.getItem('wgen_verified_drop_proofs_cache') || '[]'
-        );
+        notifiedAppIds = JSON.parse(localStorage.getItem('wgen_notified_app_ids') || '[]');
       } catch {
-        cachedLocalDrops = [];
+        notifiedAppIds = [];
+      }
+      const notifiedAppSet = new Set(notifiedAppIds);
+      let hasNewNotifiedApp = false;
+
+      for (const app of activeApps) {
+        if (!notifiedAppSet.has(app.id)) {
+          notifiedAppSet.add(app.id);
+          hasNewNotifiedApp = true;
+          sendAndroidLocalNotif({
+            id: Number(String(app.id).replace(/\D/g, '').slice(-6)) || Date.now(),
+            title: 'Pengajuan Pinjaman Masuk!',
+            body: `${app.borrower_name || 'Calon Debitur'} mengajukan ${app.currency || 'IDR'} ${Number(app.requested_amount || 0).toLocaleString('id-ID')}`
+          });
+        }
+      }
+      if (hasNewNotifiedApp) {
+        localStorage.setItem('wgen_notified_app_ids', JSON.stringify(Array.from(notifiedAppSet)));
       }
 
+      setIncomingApps(activeApps);
+
+      setAgreedAppsNotif(
+        activeApps.filter((row) => isRowBorrowerAgreed(row) || isRowBorrowerCounter(row))
+      );
+
+      // === FILTER KETAT BUKTI DROP AGAR DATA TERHAPUS TIDAK MUNCUL LAGI ===
       let currentDeletedIds = [];
       try {
         currentDeletedIds = JSON.parse(
@@ -909,6 +923,15 @@ export default function QrLoanHub({
         currentDeletedIds = [];
       }
       const deletedSet = new Set(currentDeletedIds);
+
+      let cachedLocalDrops = [];
+      try {
+        cachedLocalDrops = JSON.parse(
+          localStorage.getItem('wgen_verified_drop_proofs_cache') || '[]'
+        );
+      } catch {
+        cachedLocalDrops = [];
+      }
 
       const dropMap = new Map();
 
@@ -938,9 +961,16 @@ export default function QrLoanHub({
       }
 
       for (const app of allRows) {
-        if (deletedSet.has(app.id) || deletedSet.has(`DROP-${app.id}`)) continue;
-
         const fb = String(app.collateral_feedback || '');
+        // Abaikan permanen jika sudah pernah ditandai dihapus
+        if (
+          deletedSet.has(app.id) ||
+          deletedSet.has(`DROP-${app.id}`) ||
+          fb.includes('[DROP_DELETED]')
+        ) {
+          continue;
+        }
+
         const hasDropFromDebtor =
           fb.includes('[BUKTI DROP DIKIRIM DEBITUR') ||
           Boolean(app.drop_proof_image) ||
@@ -984,6 +1014,33 @@ export default function QrLoanHub({
       }
 
       const finalMergedDrops = Array.from(dropMap.values());
+
+      // === TRIGGER NOTIFIKASI ANDROID UNTUK BUKTI DROP JAMINAN BARU ===
+      let notifiedDropIds = [];
+      try {
+        notifiedDropIds = JSON.parse(localStorage.getItem('wgen_notified_drop_ids') || '[]');
+      } catch {
+        notifiedDropIds = [];
+      }
+      const notifiedDropSet = new Set(notifiedDropIds);
+      let hasNewNotifiedDrop = false;
+
+      for (const drop of finalMergedDrops) {
+        const dKey = drop.application_id || drop.id;
+        if (dKey && !notifiedDropSet.has(dKey)) {
+          notifiedDropSet.add(dKey);
+          hasNewNotifiedDrop = true;
+          sendAndroidLocalNotif({
+            id: (Number(String(dKey).replace(/\D/g, '').slice(-6)) || Date.now()) + 50000,
+            title: 'Bukti Drop Jaminan Masuk!',
+            body: `${drop.borrower_name || 'Debitur'} mengirim bukti jaminan: ${drop.collateral_desc || 'Unit Jaminan'}`
+          });
+        }
+      }
+      if (hasNewNotifiedDrop) {
+        localStorage.setItem('wgen_notified_drop_ids', JSON.stringify(Array.from(notifiedDropSet)));
+      }
+
       setDropProofList(finalMergedDrops);
       persistDropProofCache(finalMergedDrops);
 
@@ -1244,11 +1301,11 @@ export default function QrLoanHub({
       return updated;
     });
 
-    // 3. Bersihkan marker drop di DB aplikasi bila ada
+    // 3. Tandai permanen [DROP_DELETED] di DB aplikasi agar tidak muncul lagi
     if (targetAppId && typeof updateApplicationFeedback === 'function') {
       updateApplicationFeedback({
         applicationId: targetAppId,
-        collateralFeedback: ''
+        collateralFeedback: '[DROP_DELETED]'
       }).catch(() => {});
     }
 
@@ -1280,7 +1337,7 @@ export default function QrLoanHub({
       if (item.application_id && typeof updateApplicationFeedback === 'function') {
         updateApplicationFeedback({
           applicationId: item.application_id,
-          collateralFeedback: ''
+          collateralFeedback: '[DROP_DELETED]'
         }).catch(() => {});
       }
     }
@@ -3037,7 +3094,8 @@ export default function QrLoanHub({
               </div>
             ) : (
               <div className="space-y-3">
-                {incomingApps.map((app) => {
+                {incomingApps.map((app, idx) => {
+                  const autoQueueNumber = `#${String(idx + 1).padStart(2, '0')}`;
                   const hasCounterPrincipal =
                     app.counter_principal_amount !== undefined &&
                     app.counter_principal_amount !== null &&
@@ -3053,11 +3111,27 @@ export default function QrLoanHub({
                     <div key={app.id} className={`p-4 rounded-xl border space-y-2.5 text-xs ${effectiveInnerBox}`}>
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-2">
+                          {/* BADGE NOMOR PENGAJUAN OTOMATIS */}
+                          <span
+                            className={`px-2 py-0.5 rounded-md font-mono text-[11px] font-extrabold border ${
+                              isDarkMode
+                                ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                                : 'bg-emerald-100 border-emerald-300 text-emerald-800'
+                            }`}
+                          >
+                            {autoQueueNumber}
+                          </span>
+
                           <span className={`font-bold text-sm ${textPrimary}`}>
                             {app.borrower_name && String(app.borrower_name).trim().toLowerCase() !== ''
                               ? app.borrower_name
                               : 'Peminjam (Tanpa Nama)'}
                           </span>
+
+                          <span className={`text-[10px] font-mono ${textMuted}`}>
+                            ({app.id})
+                          </span>
+
                           {app.status === 'counter_offer' && (
                             <span
                               className={`px-2 py-0.5 rounded border text-[10px] font-semibold ${

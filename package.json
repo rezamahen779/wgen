@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/package.json",
   "name": "wgen-note",
   "private": true,
   "version": "1.0.1",

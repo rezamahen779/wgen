@@ -12,10 +12,17 @@ import {
   Calculator,
   ArrowRight,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Download
 } from 'lucide-react';
 import { App as CapApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
+import {
+  initAndroidNotifications,
+  checkForcedAppUpdate,
+  CURRENT_APP_VERSION
+} from './lib/androidNotifier';
 import ApkPortalPage from './ApkPortalPage';
 
 // Firebase Auth, Biometric & Dialog Helper
@@ -80,7 +87,10 @@ const TRANSLATIONS = {
     bioUnlockBtn: 'Scan Sidik Jari / Unlock',
     addTitle: 'Transaksi Baru',
     welcomeTitle: 'Selamat Datang!',
-    welcomeDesc: 'Silakan login terlebih dahulu untuk mengakses jurnal keuangan kamu.'
+    welcomeDesc: 'Silakan login terlebih dahulu untuk mengakses jurnal keuangan kamu.',
+    updateTitle: 'Pembaruan Wajib',
+    updateDesc: 'Versi baru aplikasi sudah tersedia di GitHub. Silakan update melalui browser untuk melanjutkan.',
+    updateBtn: 'Update via Browser'
   },
   jp: {
     home: 'ホーム', transaksi: '取引', calculator: '計算機', settings: '設定',
@@ -94,7 +104,10 @@ const TRANSLATIONS = {
     bioUnlockBtn: '指紋認証を行う',
     addTitle: '新規取引',
     welcomeTitle: 'ようこそ！',
-    welcomeDesc: '財務ジャーナルにアクセスするには、まずログインしてください。'
+    welcomeDesc: '財務ジャーナルにアクセスするには、まずログインしてください。',
+    updateTitle: '必須アップデート',
+    updateDesc: '新しいバージョンが公開されました。ブラウザからアップデートしてください。',
+    updateBtn: 'ブラウザで更新'
   },
   en: {
     home: 'Home', transaksi: 'Transactions', calculator: 'Calculator', settings: 'Settings',
@@ -108,7 +121,10 @@ const TRANSLATIONS = {
     bioUnlockBtn: 'Scan Fingerprint / Unlock',
     addTitle: 'New Transaction',
     welcomeTitle: 'Welcome!',
-    welcomeDesc: 'Please log in first to access your financial journal.'
+    welcomeDesc: 'Please log in first to access your financial journal.',
+    updateTitle: 'Mandatory Update',
+    updateDesc: 'A new version is available on GitHub. Please update via browser to continue.',
+    updateBtn: 'Update via Browser'
   },
   ar: {
     home: 'الرئيسية', transaksi: 'المعاملات', calculator: 'الحاسبة', settings: 'الإعدادات',
@@ -122,7 +138,10 @@ const TRANSLATIONS = {
     bioUnlockBtn: 'مسح البصمة / فتح',
     addTitle: 'معاملة جديدة',
     welcomeTitle: 'أهلاً بك!',
-    welcomeDesc: 'يرجى تسجيل الدخول أولاً للوصول إلى السجل المالي الخاص بك.'
+    welcomeDesc: 'يرجى تسجيل الدخول أولاً للوصول إلى السجل المالي الخاص بك.',
+    updateTitle: 'تحديث إجباري',
+    updateDesc: 'يتوفر إصدار جديد من التطبيق. يرجى التحديث عبر المتصفح للمتابعة.',
+    updateBtn: 'التحديث عبر المتصفح'
   },
   cn: {
     home: '首页', transaksi: '交易', calculator: '计算器', settings: '设置',
@@ -136,7 +155,10 @@ const TRANSLATIONS = {
     bioUnlockBtn: '扫描指纹 / 解锁',
     addTitle: '新增交易',
     welcomeTitle: '欢迎！',
-    welcomeDesc: '请先登录以访问您的财务日志。'
+    welcomeDesc: '请先登录以访问您的财务日志。',
+    updateTitle: '强制更新',
+    updateDesc: 'GitHub 上已发布新版本，请通过浏览器更新后继续使用。',
+    updateBtn: '通过浏览器更新'
   }
 };
 
@@ -258,6 +280,9 @@ export default function App() {
   // --- CUSTOM GLOBAL POPUP (ALERT & CONFIRM) ---
   const [customDialog, setCustomDialog] = useState(null);
 
+  // --- STATE WAJIB UPDATE DARI GITHUB RELEASES ---
+  const [forcedUpdateInfo, setForcedUpdateInfo] = useState(null);
+
   useEffect(() => {
     const originalAlert = window.alert;
 
@@ -281,6 +306,40 @@ export default function App() {
       window.alert = originalAlert;
     };
   }, []);
+
+  // --- ANDROID LOCAL NOTIFICATIONS & GITHUB FORCED UPDATE CHECKER ---
+  useEffect(() => {
+    if (isPublicApplyRoute || !Capacitor.isNativePlatform()) return;
+
+    // 1. Minta izin notifikasi Android (Android 13+ POST_NOTIFICATIONS)
+    initAndroidNotifications();
+
+    // 2. Cek apakah ada rilis terbaru di GitHub (zd-devp-w/wgen)
+    checkForcedAppUpdate().then((updateData) => {
+      if (updateData) {
+        setForcedUpdateInfo(updateData);
+      }
+    });
+
+    // 3. Saat user mengetuk notifikasi Pengajuan Masuk / Bukti Drop di bar Android,
+    //    langsung buka halaman Transaksi -> Hutang / Piutang (DebtManager)
+    let notifListener;
+    LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
+      const targetRoute = action?.notification?.extra?.route;
+      if (targetRoute === 'debtmanager') {
+        setActiveTab('transaksi');
+        setTransactionSubTab('debtmanager');
+      }
+    }).then((handle) => {
+      notifListener = handle;
+    });
+
+    return () => {
+      if (notifListener && typeof notifListener.remove === 'function') {
+        notifListener.remove();
+      }
+    };
+  }, [isPublicApplyRoute]);
 
   const handleDialogClose = (result) => {
     if (customDialog?.resolve) {
@@ -347,7 +406,6 @@ export default function App() {
   };
 
   // Biometric Startup & Background Resume Listener
-  // Biometric Startup & Background Resume Listener
   useEffect(() => {
     if (isPublicApplyRoute) return;
 
@@ -359,11 +417,9 @@ export default function App() {
       clearTimeout(resumeTimer);
       resumeTimer = setTimeout(() => {
         if (!isMounted) return;
-        // Pastikan window sudah benar-benar aktif & mendapat fokus dari Android
         if (document.visibilityState === 'visible' && document.hasFocus()) {
           handleUnlockBiometric();
         } else {
-          // Jika Android belum memberi fokus ke WebView, tunggu event focus
           const onWindowFocus = () => {
             window.removeEventListener('focus', onWindowFocus);
             setTimeout(() => {
@@ -385,16 +441,22 @@ export default function App() {
       appStateListener = await CapApp.addListener('appStateChange', (state) => {
         if (!state.isActive) {
           backgroundTime.current = Date.now();
-          // Reset ref jika sempat macet saat keluar aplikasi
           isPromptingBio.current = false;
         } else {
           const isBioEnabled = localStorage.getItem('wgen_use_biometric') === 'true';
           const timeDiff = Date.now() - backgroundTime.current;
           if (isBioEnabled && backgroundTime.current > 0 && timeDiff > 2000) {
-            backgroundTime.current = 0; // Reset agar tidak terpanggil ganda
+            backgroundTime.current = 0;
             setIsBiometricLocked(true);
             triggerBioWhenReady(650);
           }
+
+          // Cek ulang versi GitHub setiap kali user kembali membuka aplikasi
+          checkForcedAppUpdate().then((updateData) => {
+            if (isMounted && updateData) {
+              setForcedUpdateInfo(updateData);
+            }
+          });
         }
       });
     };
@@ -409,7 +471,7 @@ export default function App() {
       }
     };
   }, [isPublicApplyRoute]);
-  
+
   // Firebase Auth & Splash Timer
   useEffect(() => {
     if (isPublicApplyRoute) return;
@@ -469,10 +531,12 @@ export default function App() {
   if (isPublicApplyRoute) {
     return <LoanApplyPage />;
   }
-    // Jika dibuka lewat browser (Vercel), tampilkan halaman download APK
+
+  // Jika dibuka lewat browser (Vercel), tampilkan halaman download APK
   if (!Capacitor.isNativePlatform()) {
-  return <ApkPortalPage />;
+    return <ApkPortalPage />;
   }
+
   const handleLanguageChange = (newLang) => {
     setLanguage(newLang);
     localStorage.setItem('wgen_lang', newLang);
@@ -585,6 +649,50 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col font-sans bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-gray-100 pb-28 sm:pb-20 relative transition-colors duration-300 overflow-x-hidden select-none">
       <SplitBillFloatingBubble mainCurrency={mainCurrency} language={language} twoToneTheme={twoToneTheme} />
+
+      {/* GLOBAL MANDATORY UPDATE MODAL (DARI GITHUB RELEASES) */}
+      <AnimatePresence>
+        {forcedUpdateInfo && (
+          <div className="fixed inset-0 z-[10000] bg-black/80 backdrop-blur-md flex items-center justify-center p-5">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 15 }}
+              transition={macSpring}
+              className="w-full max-w-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl p-6 shadow-2xl text-center flex flex-col items-center gap-4"
+            >
+              <div className={`p-3.5 rounded-2xl bg-emerald-500/10 ${currentTheme.icon}`}>
+                <Download className="w-8 h-8" />
+              </div>
+
+              <div className="space-y-1.5 w-full">
+                <span className="inline-block text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                  v{CURRENT_APP_VERSION} → v{forcedUpdateInfo.latestVersion}
+                </span>
+                <h3 className="text-sm font-black tracking-wide text-gray-900 dark:text-white pt-1">
+                  {t.updateTitle}
+                </h3>
+                <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed break-words">
+                  {t.updateDesc}
+                </p>
+                {forcedUpdateInfo.releaseNotes && (
+                  <div className="mt-2 p-2.5 rounded-2xl bg-gray-100 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/60 text-[11px] text-gray-700 dark:text-gray-300 text-left max-h-24 overflow-y-auto">
+                    {forcedUpdateInfo.releaseNotes}
+                  </div>
+                )}
+              </div>
+
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => window.open(forcedUpdateInfo.downloadUrl, '_system')}
+                className={`w-full py-3 rounded-2xl bg-gradient-to-r ${currentTheme.btn} text-white font-bold text-xs shadow-lg cursor-pointer mt-1`}
+              >
+                {t.updateBtn}
+              </motion.button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* GLOBAL CUSTOM MODAL (ALERT & CONFIRM) */}
       <AnimatePresence>
