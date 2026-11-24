@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Download, ShieldCheck, RefreshCw, CheckCircle2 } from 'lucide-react';
-import logoWGen from './assets/logo-wgen.png';
+import logoWGen from './assets/logo-w.png';
 
 const APK_DOWNLOAD_URL = 'https://github.com/zd-devp-w/wgen/releases/latest/download/WGen.Note.apk';
 const APP_VERSION = 'v1.0.0';
