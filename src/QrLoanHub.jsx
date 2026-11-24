@@ -776,6 +776,17 @@ export default function QrLoanHub({
     });
   };
 
+  const getEffectiveRewardPercent = (app) => {
+    const hasCol = Number(app?.has_collateral) === 1 || app?.contract_type === 'secured_collateral';
+    const maxPct = hasCol ? 12.5 : 20;
+    const raw = app?.reward_percent;
+    const num = Number(raw);
+    if (raw === '' || raw === null || raw === undefined || isNaN(num) || num <= 0) {
+      return maxPct;
+    }
+    return Math.min(maxPct, num);
+  };
+
   const formatWaPhone = (rawPhone) => {
     const digits = String(rawPhone || '').replace(/\D/g, '');
     if (digits.startsWith('0')) return '62' + digits.slice(1);
@@ -847,7 +858,9 @@ export default function QrLoanHub({
       localStorage.getItem('wgen_last_uid') ||
       '';
     if (!uid) return;
-    if (isFetchingAppsRef.current) return;
+
+    // Jika sedang background polling (bukan klik manual), skip jika masih ada request berjalan
+    if (isFetchingAppsRef.current && !showSpinner) return;
 
     isFetchingAppsRef.current = true;
     if (showSpinner) {
@@ -994,7 +1007,7 @@ export default function QrLoanHub({
                 borrowerPhone: app.borrower_phone,
                 currency: app.currency || 'IDR',
                 totalPrincipal: Number(app.requested_amount || 0),
-                rewardPercent: Number(app.reward_percent ?? 20)
+                rewardPercent: getEffectiveRewardPercent(app)
               });
             }
           }
@@ -1022,17 +1035,22 @@ export default function QrLoanHub({
     }
 
     let isMounted = true;
+    let initialLoaded = false;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (!isMounted) return;
       if (user?.uid) {
         localStorage.setItem('wgen_last_uid', user.uid);
-        loadQrApplicationsAndReports(user.uid, true);
+        if (!initialLoaded) {
+          initialLoaded = true;
+          loadQrApplicationsAndReports(user.uid, true);
+        }
       }
     });
 
     const cachedUid = auth?.currentUser?.uid || localStorage.getItem('wgen_last_uid');
-    if (cachedUid) {
+    if (cachedUid && !initialLoaded) {
+      initialLoaded = true;
       loadQrApplicationsAndReports(cachedUid, true);
     }
 
@@ -1040,7 +1058,7 @@ export default function QrLoanHub({
       if (document.visibilityState === 'visible') {
         loadQrApplicationsAndReports();
       }
-    }, 6000);
+    }, 15000);
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
@@ -1278,6 +1296,7 @@ export default function QrLoanHub({
       [cardKey]: !prev[cardKey]
     }));
   };
+
   const saveBase64ImageToDevice = async (dataUrl, fileName) => {
     try {
       if (Capacitor.isNativePlatform()) {
@@ -1308,12 +1327,11 @@ export default function QrLoanHub({
     document.body.removeChild(link);
   };
 
-
   const handleDownloadDropProofImage = async (dropItem) => {
-  if (!dropItem.proof_image) return;
-  const fileName = `Bukti-Drop-${dropItem.application_id || 'Jaminan'}-${dropItem.borrower_name || 'Debitur'}.png`;
-  await saveBase64ImageToDevice(dropItem.proof_image, fileName);
-};
+    if (!dropItem.proof_image) return;
+    const fileName = `Bukti-Drop-${dropItem.application_id || 'Jaminan'}-${dropItem.borrower_name || 'Debitur'}.png`;
+    await saveBase64ImageToDevice(dropItem.proof_image, fileName);
+  };
 
   // === KONFIRMASI MUTASI TRANSFER MASUK ===
   const handleConfirmTransferFromBorrower = async (report) => {
@@ -1472,7 +1490,7 @@ export default function QrLoanHub({
 
     const fullApplyUrl = `${PUBLIC_WEB_ORIGIN}/apply?token=${qrLinkData?.token || ''}`;
     const posterWidth = 720;
-    const posterHeight = 1040; // Tinggi ditambah sedikit agar muat teks link manual
+    const posterHeight = 1040;
     const exportCanvas = document.createElement('canvas');
     exportCanvas.width = posterWidth;
     exportCanvas.height = posterHeight;
@@ -1526,10 +1544,10 @@ export default function QrLoanHub({
       textY += 30;
     }
 
-    // === BAGIAN BARU: INSTRUKSI KETIK LINK MANUAL + URL ===
+    // === BAGIAN INSTRUKSI KETIK LINK MANUAL + URL ===
     if (qrPosterLinkText && qrPosterLinkText.trim() !== '') {
       textY += 18;
-      ctx.fillStyle = '#fbbf24'; // Warna kuning emas agar menonjol
+      ctx.fillStyle = '#fbbf24';
       ctx.font = 'bold 19px sans-serif';
       const linkPromptLines = wrapCanvasText(ctx, qrPosterLinkText.trim(), posterWidth - 110);
       for (const line of linkPromptLines.slice(0, 2)) {
@@ -1537,7 +1555,6 @@ export default function QrLoanHub({
         textY += 26;
       }
 
-      // Cetak URL lengkapnya
       ctx.fillStyle = '#34d399';
       ctx.font = 'bold 18px monospace';
       ctx.fillText(fullApplyUrl, posterWidth / 2, textY + 4);
@@ -1547,7 +1564,6 @@ export default function QrLoanHub({
     ctx.font = '18px sans-serif';
     ctx.fillText('• Sistem Pengajuan & Kontrak Digital •', posterWidth / 2, posterHeight - 50);
 
-    // Ganti 4 baris paling bawah di handleDownloadQrPng menjadi:
     const fileName = `Poster-QR-Pinjaman-${qrLinkData?.token || 'WGen'}.png`;
     saveBase64ImageToDevice(exportCanvas.toDataURL('image/png'), fileName);
   };
@@ -1610,7 +1626,7 @@ export default function QrLoanHub({
       .replace(/\{nama\}/g, app.borrower_name || '')
       .replace(/\{nominal\}/g, nominalStr)
       .replace(/\{pokok\}/g, pokokStr)
-      .replace(/\{jasa\}/g, String(app.reward_percent ?? 20))
+      .replace(/\{jasa\}/g, String(getEffectiveRewardPercent(app)))
       .replace(/\{tenor\}/g, String(activeTenor))
       .replace(/\{jaminan\}/g, app.collateral_desc || 'Tanpa Jaminan')
       .replace(/\{alasan\}/g, extra.reasonText ?? app.rejection_reason ?? '-')
@@ -1627,7 +1643,7 @@ export default function QrLoanHub({
 
     const defaultReason =
       type === 'counter_offer'
-        ? `Imbalan jasa (${app.reward_percent ?? 20}%) belum sesuai kesepakatan. Silakan ajukan penawaran imbalan jasa ulang.`
+        ? `Imbalan jasa (${getEffectiveRewardPercent(app)}%) belum sesuai kesepakatan. Silakan ajukan penawaran imbalan jasa ulang.`
         : type === 'principal_offer'
         ? `Penyesuaian nominal pokok pinjaman menjadi ${app.currency || managerCurrency || 'IDR'} ${Number(defaultPrincipal || 0).toLocaleString('id-ID')}.`
         : type === 'tenor_approval'
@@ -2092,7 +2108,7 @@ export default function QrLoanHub({
                               (dari tawaran {appItem.currency} {tawaranSebelumnya.toLocaleString('id-ID')})
                             </span>
                           )}{' '}
-                          (Jasa {appItem.reward_percent ?? 20}%).
+                          (Jasa {getEffectiveRewardPercent(appItem)}%).
                           {appItem.borrower_reply_note && (
                             <span className="block italic opacity-90 mt-0.5">
                               Catatan: "{appItem.borrower_reply_note}"
@@ -2105,7 +2121,7 @@ export default function QrLoanHub({
                           <strong>
                             {appItem.currency} {nominalDitampilkan.toLocaleString('id-ID')}
                           </strong>{' '}
-                          (Jasa {appItem.reward_percent ?? 20}%). Siap ACC & cairkan!
+                          (Jasa {getEffectiveRewardPercent(appItem)}%). Siap ACC & cairkan!
                         </>
                       )}
                     </div>
@@ -2831,11 +2847,8 @@ export default function QrLoanHub({
                     <span className={`text-[10px] block mt-1 font-mono ${isDarkMode ? 'text-emerald-400/80' : 'text-emerald-700'}`}>
                       Otomatis diikuti link: {PUBLIC_WEB_ORIGIN}/apply?token={qrLinkData.token}
                     </span>
-                  </div>                    
-
-
+                  </div>
                 </div>
-                
 
                 <div className="w-full text-left space-y-1.5 pt-1">
                   <label className={`text-[11px] font-semibold block ${textSecondary}`}>
@@ -3053,7 +3066,7 @@ export default function QrLoanHub({
                                   : 'bg-amber-100 border-amber-300 text-amber-800'
                               }`}
                             >
-                              Lelang Jasa • Tawaran Terkini: {app.reward_percent || 0}%
+                              Lelang Jasa • Tawaran Terkini: {getEffectiveRewardPercent(app)}%
                             </span>
                           )}
                           {hasCounterPrincipal && (
@@ -3119,7 +3132,7 @@ export default function QrLoanHub({
                           <span className={`font-medium ${textPrimary}`}>{app.tenor_months} bln</span> (
                           {Number(app.is_installment) === 1 ? 'Cicilan' : 'Sekali Bayar'}) • Imbalan Jasa:{' '}
                           <span className={`font-semibold ${isDarkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>
-                            {app.reward_percent || 20}%
+                            {getEffectiveRewardPercent(app)}%
                           </span>
                         </div>
                         <div>

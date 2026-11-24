@@ -15,8 +15,7 @@ import {
   formatCurrencyAmount,
   convertIdrLimit,
   buildDynamicContracts,
-  getPenaltyTierInfo,
-  getMaxAuctionRewardPercent
+  getPenaltyTierInfo
 } from './loanContractsConfig';
 
 const CURRENCY_CODES = [
@@ -187,6 +186,21 @@ function detectTicketContractType(ticketData) {
   const amt = Number(ticketData.requested_amount || 0);
   if (code === 'IDR' && amt <= 500000) return 'micro_unsecured';
   return 'standard_unsecured';
+}
+
+// Aturan baku batas maksimal imbalan jasa per kontrak
+function getContractMaxReward(contractType) {
+  return contractType === 'secured_collateral' ? 12.5 : 20;
+}
+
+// Jika nilai 0 atau kosong, kembalikan ke batas maksimal kontrak masing-masing
+function normalizeRewardPercent(rawValue, contractType) {
+  const maxPct = getContractMaxReward(contractType);
+  const num = Number(rawValue);
+  if (rawValue === '' || rawValue === null || rawValue === undefined || isNaN(num) || num <= 0) {
+    return maxPct;
+  }
+  return Math.min(maxPct, num);
 }
 
 // Ekstrak rekening / e-wallet tujuan dari data tiket atau QR link kreditur
@@ -432,8 +446,8 @@ export default function LoanApplyPage() {
       } else {
         setTicketData(app);
         const appContractType = detectTicketContractType(app);
-        const maxReward = getMaxAuctionRewardPercent(appContractType);
-        const initialReward = Math.min(maxReward, Number(app.reward_percent ?? maxReward));
+        const maxReward = getContractMaxReward(appContractType);
+        const initialReward = normalizeRewardPercent(app.reward_percent, appContractType);
         setNewRewardPercent(String(initialReward));
         setNewRequestedAmount(String(app.requested_amount || ''));
         setUpgradeCollateralDesc(app.collateral_desc || '');
@@ -491,10 +505,12 @@ export default function LoanApplyPage() {
               transferMethod: lockedDest
             }));
           }
+          const initialContract = Number(data.is_micro) === 1 ? 'micro_unsecured' : 'secured_collateral';
           setForm((prev) => ({
             ...prev,
             currency: data.default_currency || 'IDR',
-            contractType: Number(data.is_micro) === 1 ? 'micro_unsecured' : 'secured_collateral'
+            contractType: initialContract,
+            rewardPercent: String(getContractMaxReward(initialContract))
           }));
         }
       } catch (err) {
@@ -615,7 +631,7 @@ export default function LoanApplyPage() {
           nextAmount = String(nextMax);
         }
       }
-      const nextReward = newContractId === 'standard_unsecured' ? '20' : '12.5';
+      const nextReward = String(getContractMaxReward(newContractId));
       return {
         ...prev,
         contractType: newContractId,
@@ -731,7 +747,7 @@ export default function LoanApplyPage() {
 
     setSubmitting(true);
     try {
-      const defaultReward = form.contractType === 'standard_unsecured' ? 20 : 12.5;
+      const finalReward = normalizeRewardPercent(form.rewardPercent, form.contractType);
       const res = await submitLoanApplication({
         qrToken: tokenParam,
         ...form,
@@ -739,7 +755,7 @@ export default function LoanApplyPage() {
         debtor_signature: form.debtorSignature,
         tenorMonths: Math.min(12, Math.max(1, parsedTenorVal)),
         hasCollateral: selectedContract.requiresCollateral,
-        rewardPercent: Number(form.rewardPercent) || defaultReward
+        rewardPercent: finalReward
       });
       setSubmittedResult(res);
     } catch (err) {
@@ -756,21 +772,18 @@ export default function LoanApplyPage() {
 
     const ticketCurrency = (ticketData.currency || 'IDR').toUpperCase();
     const ticketContractType = detectTicketContractType(ticketData);
-    const maxAllowedPct = getMaxAuctionRewardPercent(ticketContractType);
-    const currentRewardPct = Math.min(
-      maxAllowedPct,
-      Number(ticketData.reward_percent ?? maxAllowedPct)
-    );
+    const maxAllowedPct = getContractMaxReward(ticketContractType);
+    const currentRewardPct = normalizeRewardPercent(ticketData.reward_percent, ticketContractType);
 
     setTicketError('');
 
     if (auctionMode === 'reward') {
-      const pct = Number(newRewardPercent);
-      if (isNaN(pct) || pct < 0 || pct > maxAllowedPct) {
+      const pct = normalizeRewardPercent(newRewardPercent, ticketContractType);
+      if (isNaN(Number(newRewardPercent)) || Number(newRewardPercent) < 0 || Number(newRewardPercent) > maxAllowedPct) {
         setTicketError(
-          ticketContractType === 'standard_unsecured'
-            ? 'Untuk Kontrak 2, penawaran imbalan jasa maksimal adalah 20%.'
-            : 'Untuk Kontrak 1 dan Kontrak 3, batas maksimal lelang imbalan jasa adalah 12,5%.'
+          ticketContractType === 'secured_collateral'
+            ? 'Untuk Kontrak 3 (Dengan Jaminan), batas maksimal lelang imbalan jasa adalah 12,5%.'
+            : 'Untuk Kontrak 1 & Kontrak 2, penawaran imbalan jasa maksimal adalah 20%.'
         );
         return;
       }
@@ -902,9 +915,9 @@ export default function LoanApplyPage() {
         ticketData.requested_amount ||
         0
     );
-    const currentRewardPct = Number(
-      ticketData.reward_percent ||
-        (detectTicketContractType(ticketData) === 'standard_unsecured' ? 20 : 12.5)
+    const currentRewardPct = normalizeRewardPercent(
+      ticketData.reward_percent,
+      detectTicketContractType(ticketData)
     );
 
     setRespondingRevisedPrincipal(true);
@@ -948,7 +961,7 @@ export default function LoanApplyPage() {
     try {
       await resubmitLoanCounterOffer(
         ticketData.id,
-        Number(ticketData.reward_percent || 12.5),
+        normalizeRewardPercent(ticketData.reward_percent, detectTicketContractType(ticketData)),
         { auctionType: 'request_add_principal' }
       );
       const nextUsed = addRequestCount + 1;
@@ -966,9 +979,9 @@ export default function LoanApplyPage() {
   // Handler respon debitur atas Persetujuan Tenor Final dari kreditur (Setuju / Tolak - Non-Lelang)
   const handleRespondTenorOffer = async (agreed, approvedTenor) => {
     if (!ticketData?.id) return;
-    const currentRewardPct = Number(
-      ticketData.reward_percent ||
-        (detectTicketContractType(ticketData) === 'standard_unsecured' ? 20 : 12.5)
+    const currentRewardPct = normalizeRewardPercent(
+      ticketData.reward_percent,
+      detectTicketContractType(ticketData)
     );
 
     setRespondingTenorOffer(true);
@@ -1018,7 +1031,7 @@ export default function LoanApplyPage() {
     try {
       await resubmitLoanCounterOffer(
         ticketData.id,
-        Number(ticketData.reward_percent || 12.5),
+        normalizeRewardPercent(ticketData.reward_percent, detectTicketContractType(ticketData)),
         {
           auctionType: 'collateral_drop_proof',
           collateralDropProofPhoto: dropProofPhoto,
@@ -1182,7 +1195,8 @@ export default function LoanApplyPage() {
   if (trackingMode || (!tokenParam && !submittedResult)) {
     const status = ticketData?.status || '';
     const ticketContractType = detectTicketContractType(ticketData);
-    const maxAuctionReward = getMaxAuctionRewardPercent(ticketContractType);
+    const maxAuctionReward = getContractMaxReward(ticketContractType);
+    const displayTicketReward = normalizeRewardPercent(ticketData?.reward_percent, ticketContractType);
     const ticketCurrency = (ticketData?.currency || 'IDR').toUpperCase();
     const ticketPrincipal = Number(ticketData?.requested_amount || 0);
     const activeTicketTenor = Number(
@@ -1332,9 +1346,7 @@ export default function LoanApplyPage() {
                 <div>
                   <span className="text-emerald-400/80 block">Imbalan Jasa:</span>
                   <span className="font-semibold text-emerald-300">
-                    {ticketData.reward_percent ||
-                      (ticketContractType === 'standard_unsecured' ? 20 : 12.5)}
-                    %
+                    {displayTicketReward}%
                   </span>
                 </div>
                 <div>
@@ -1783,7 +1795,7 @@ export default function LoanApplyPage() {
                       type="button"
                       onClick={() => {
                         setAuctionMode('reward');
-                        setNewRewardPercent(String(Math.min(maxAuctionReward, Number(ticketData?.reward_percent ?? maxAuctionReward))));
+                        setNewRewardPercent(String(displayTicketReward));
                         setShowAuctionForm(true);
                       }}
                       className="w-full py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs"
@@ -1821,7 +1833,7 @@ export default function LoanApplyPage() {
                         )}
                       </div>
 
-                      {/* FORM OPSI 1: LELANG IMBALAN JASA (KONTRAK 1 & 3 MAKS 12,5%, KONTRAK 2 MAKS 20%) */}
+                      {/* FORM OPSI 1: LELANG IMBALAN JASA (KONTRAK 1 & 2 MAKS 20%, KONTRAK 3 MAKS 12,5%) */}
                       {auctionMode === 'reward' && (
                         <form onSubmit={handleAuctionResubmit} className="space-y-2.5">
                           <label className="block text-[11px] text-amber-200">
@@ -1857,7 +1869,7 @@ export default function LoanApplyPage() {
                             Estimasi Hadiah Baru:{' '}
                             {formatCurrencyAmount(
                               (ticketPrincipal *
-                                Math.min(maxAuctionReward, Math.max(0, Number(newRewardPercent) || 0))) /
+                                normalizeRewardPercent(newRewardPercent, ticketContractType)) /
                                 100,
                               ticketCurrency
                             )}
@@ -2320,12 +2332,12 @@ export default function LoanApplyPage() {
                   type="number"
                   step="0.1"
                   min="0"
-                  max={form.contractType === 'standard_unsecured' ? '20' : '12.5'}
+                  max={getContractMaxReward(form.contractType)}
                   required
                   value={form.rewardPercent}
                   onChange={(e) => {
                     const val = e.target.value;
-                    const maxFormReward = form.contractType === 'standard_unsecured' ? 20 : 12.5;
+                    const maxFormReward = getContractMaxReward(form.contractType);
                     if (val !== '' && Number(val) > maxFormReward) {
                       setForm({ ...form, rewardPercent: String(maxFormReward) });
                       return;
@@ -2335,9 +2347,9 @@ export default function LoanApplyPage() {
                   className="w-full px-3 py-2.5 rounded-lg bg-[#071510] border border-emerald-800 text-sm text-white focus:outline-none focus:border-emerald-500"
                 />
                 <span className="text-[10px] text-emerald-300/75">
-                  {form.contractType === 'standard_unsecured'
-                    ? 'Khusus Kontrak 2: Imbalan jasa maksimal 20% (dapat dinegosiasikan/lelang)'
-                    : 'Kontrak 1 & 3: Maksimal 12,5% (dapat dinegosiasikan/lelang)'}
+                  {form.contractType === 'secured_collateral'
+                    ? 'Khusus Kontrak 3 (Jaminan): Maksimal 12,5% (dapat dinegosiasikan/lelang)'
+                    : 'Kontrak 1 & 2 (Tanpa Jaminan): Maksimal 20% (dapat dinegosiasikan/lelang)'}
                 </span>
               </div>
 
