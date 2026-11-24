@@ -91,7 +91,7 @@ export default function ApkPortalPage() {
 
         if (apkAsset) {
           // Konversi ukuran dari Bytes ke Megabytes (MB)
-          const sizeInMB = (apkAsset.size / (1024 * 1024)).toFixed(1) + ' MB';
+          const sizeInMB = (apkAsset.size / (1000 * 1000)).toFixed(1) + ' MB';
 
           setReleaseInfo({
             version: data.tag_name || 'v1.0.0',
