@@ -16,6 +16,7 @@
     "@capacitor/core": "^8.5.3",
     "@capacitor/filesystem": "^8.1.5",
     "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/share": "^8.0.3",
     "@capgo/capacitor-native-biometric": "^8.9.1",
     "@libsql/client": "^0.18.0",
     "@supabase/server": "^1.9.2",

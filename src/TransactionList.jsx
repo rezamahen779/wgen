@@ -32,7 +32,7 @@ import {
 } from './categoryHelper';
 
 import { fetchLiveExchangeRates, convertCurrencyDynamic, getCurrencySymbolDynamic } from './lib/currencyService';
-
+import { showConfirm } from './lib/dialog';
 
 // Map Icon khusus kategori Non-Operasional / Non-Rutin
 const NON_OPERATIONAL_ICONS = {
@@ -816,7 +816,7 @@ const downloadFileBlob = async (blob, filename) => {
       return;
     }
 
-    if (!window.confirm(t.confirmDel)) return;
+   if (!(await showConfirm(t.confirmDel))) return;
 
     try {
       const currentUser = auth.currentUser;
@@ -873,8 +873,7 @@ const downloadFileBlob = async (blob, filename) => {
   // 🔴 B. Eksekusi Hapus TOTAL (Reset Seluruh Transaksi User di Turso)
   const handleConfirmDeleteEverything = async () => {
     const confirmMsg = `${t.confirmDelEverything}\n\n${t.countToDelete}: ${transactions.length}`;
-    if (!window.confirm(confirmMsg)) return;
-
+    if (!(await showConfirm(confirmMsg))) return;
     try {
       const currentUser = auth.currentUser;
       if (!currentUser) return;
@@ -893,7 +892,8 @@ const downloadFileBlob = async (blob, filename) => {
   };
 
   // 🟠 C. Eksekusi Hapus Sesuai Filter Aktif
-  const handleConfirmDeleteFiltered = () => {
+ // 🟠 C. Eksekusi Hapus Sesuai Filter Aktif
+  const handleConfirmDeleteFiltered = async () => {
     const hasActiveFilter = filterType !== 'all' || filterCategory.length > 0 || dateFrom !== '' || dateTo !== '' || searchQuery !== '';
 
     // Jika BELUM ada filter aktif:
@@ -924,28 +924,26 @@ const downloadFileBlob = async (blob, filename) => {
     const mainConfirmText = t.confirmDelFiltered || t.confirmDel || '';
     const confirmMsg = `${mainConfirmText}\n${t.countToDelete}: ${filteredTransactions.length}.${filterText}`;
 
-    if (!window.confirm(confirmMsg)) return;
+    if (!(await showConfirm(confirmMsg))) return;
 
-    (async () => {
-      try {
-        const idsToDelete = filteredTransactions.map(tr => tr.id);
-        const statements = idsToDelete.map(id => ({
-          sql: `DELETE FROM transactions WHERE id = ?`,
-          args: [id]
-        }));
+    try {
+      const idsToDelete = filteredTransactions.map(tr => tr.id);
+      const statements = idsToDelete.map(id => ({
+        sql: `DELETE FROM transactions WHERE id = ?`,
+        args: [id]
+      }));
 
-        await turso.batch(statements, "write");
+      await turso.batch(statements, "write");
 
-        setTransactions(prev => prev.filter(tr => !idsToDelete.includes(tr.id)));
-        setShowDeleteChoiceModal(false);
-        setIsFilterDeleteLocked(false);
-        alert(t.successDelete);
-      } catch (error) {
-        alert(t.failDelete + error.message);
-      }
-    })();
+      setTransactions(prev => prev.filter(tr => !idsToDelete.includes(tr.id)));
+      setShowDeleteChoiceModal(false);
+      setIsFilterDeleteLocked(false);
+      alert(t.successDelete);
+    } catch (error) {
+      alert(t.failDelete + error.message);
+    }
   };
-    
+     
   const compressImage = (file, maxWidth = 800, quality = 0.7) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();

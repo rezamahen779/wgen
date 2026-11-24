@@ -11,6 +11,7 @@ import { convertCurrencyDynamic, fetchLiveExchangeRates, getCurrencySymbolDynami
 import QrLoanHub from './QrLoanHub';
 import DebtFormModal from './DebtFormModal';
 import { buildAdjustedContractHtml } from './utils/contractParser';
+import { showConfirm } from './lib/dialog';
 
 export default function DebtManager({ language = 'id', themeProp, isDarkModeProp }) {
   // 1. Sinkronisasi Otomatis Tema Warna & Display Mode (Dark/Light) dari Sistem
@@ -2388,7 +2389,7 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
   };
 
   const handleDeleteDebt = async (id) => {
-    if (window.confirm(t.confirmDelete)) {
+    if (await showConfirm(t.confirmDelete)) {
       const updatedDebts = debts.filter(d => String(d.id) !== String(id));
       setDebts(updatedDebts);
       localStorage.setItem('wgen_debts_data', JSON.stringify(updatedDebts));
@@ -2955,6 +2956,23 @@ export default function DebtManager({ language = 'id', themeProp, isDarkModeProp
         .map((part) => `<span class="sub-account">• ${escapeHtml(part)}</span>`)
         .join('');
     };
+    const historyRows = (debt.paymentHistory || []).map((log, idx) => {
+      const summary = formatHistoryLogSummary(log, dCurr, debt);
+      return `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>
+            <strong>${log.timestamp}</strong>
+            ${summary ? `<div style="font-size:7pt; color:#475569;">${summary}</div>` : ''}
+          </td>
+          <td style="text-align: ${isRtl ? 'left' : 'right'}; font-weight: 700;">
+            ${dSym} ${Number(log.amount || 0).toLocaleString()}
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+
 
     const htmlContent = `<!DOCTYPE html>
     <html lang="${language}" dir="${isRtl ? 'rtl' : 'ltr'}">

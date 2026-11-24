@@ -25,6 +25,7 @@ import {
 } from './categoryHelper';
 
 import { fetchLiveExchangeRates, convertCurrencyDynamic, getCurrencySymbolDynamic } from './lib/currencyService';
+import { showConfirm } from './lib/dialog';
 
 // Preset Kategori Non-Operasional (Aset / Non-Operasional)
 const NON_OPERATIONAL_CATEGORIES = {
@@ -349,7 +350,7 @@ export default function Budgeting({ mainCurrency, language, twoToneTheme }) {
 
   // 🟢 HAPUS 1 BUDGET DENGAN OFFLINE FALLBACK
   const handleDeleteBudget = async (id) => {
-    if (!window.confirm(t.confirmDel)) return;
+    if (!(await showConfirm(t.confirmDel))) return;
     const isOnline = navigator.onLine;
 
     try {
@@ -378,7 +379,7 @@ export default function Budgeting({ mainCurrency, language, twoToneTheme }) {
   // 🟢 HAPUS SEMUA BUDGET DENGAN OFFLINE FALLBACK
   const handleDeleteAllBudgets = async () => {
     if (budgets.length === 0) return;
-    if (!window.confirm(t.confirmDelAll)) return;
+    if (!(await showConfirm(t.confirmDelAll))) return;
     const userId = auth.currentUser?.uid || localStorage.getItem('wgen_last_uid') || "wgen_user";
     const isOnline = navigator.onLine;
 

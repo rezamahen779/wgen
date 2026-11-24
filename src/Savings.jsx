@@ -12,6 +12,7 @@ import { auth } from './lib/firebase';
 import { fetchWithOfflineFallback } from './lib/dbService';
 // Currency Service
 import { fetchLiveExchangeRates, convertCurrencyDynamic } from './lib/currencyService';
+import { showConfirm } from './lib/dialog';
 
 
 export default function Savings({ mainCurrency, language, twoToneTheme }) {
@@ -766,7 +767,7 @@ export default function Savings({ mainCurrency, language, twoToneTheme }) {
         const newAmt = Number(currentAmount) || 0;
 
         if (goalType === 'cash' && newAmt < prevAmt) {
-          const confirmReduce = window.confirm(t.frozenReduceWarning);
+          const confirmReduce = await showConfirm(t.frozenReduceWarning);
           if (!confirmReduce) return;
         }
       }
@@ -839,9 +840,9 @@ export default function Savings({ mainCurrency, language, twoToneTheme }) {
     }
   };
   
-  const handleDeleteGoal = async (id, isGoalFrozen) => {
+ const handleDeleteGoal = async (id, isGoalFrozen) => {
     const confirmMsg = isGoalFrozen ? t.frozenDeleteWarning : t.deleteConfirm;
-    if (window.confirm(confirmMsg)) {
+    if (await showConfirm(confirmMsg)) {
       try {
         // 🟢 Fallback UID agar aman saat offline
         const userId = auth?.currentUser?.uid || localStorage.getItem('wgen_last_uid') || "wgen_user";

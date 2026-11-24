@@ -16,10 +16,11 @@ import {
 } from 'lucide-react';
 import { App as CapApp } from '@capacitor/app';
 
-// Firebase Auth & Biometric Helper
+// Firebase Auth, Biometric & Dialog Helper
 import { auth } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { authenticateAndroidBiometric } from './lib/biometric';
+import { registerDialogHandler } from './lib/dialog';
 
 // Import Assets & Components
 import logoWGen from './assets/logo-wgen.png';
@@ -252,20 +253,39 @@ export default function App() {
   const [slideDirection, setSlideDirection] = useState(0);
   const [showQuickAddModal, setShowQuickAddModal] = useState(false);
 
-  // --- CUSTOM GLOBAL POPUP (PENGGANTI ALERT BAWAAN BROWSER) ---
-  const [customAlert, setCustomAlert] = useState(null);
+  // --- CUSTOM GLOBAL POPUP (ALERT & CONFIRM) ---
+  const [customDialog, setCustomDialog] = useState(null);
 
   useEffect(() => {
     const originalAlert = window.alert;
 
+    // Override window.alert otomatis
     window.alert = (message) => {
-      setCustomAlert(String(message));
+      setCustomDialog({
+        type: 'alert',
+        message: String(message),
+        resolve: () => {}
+      });
     };
+
+    // Daftarkan handler untuk showAlert & showConfirm
+    registerDialogHandler(({ type, message }) => {
+      return new Promise((resolve) => {
+        setCustomDialog({ type, message, resolve });
+      });
+    });
 
     return () => {
       window.alert = originalAlert;
     };
   }, []);
+
+  const handleDialogClose = (result) => {
+    if (customDialog?.resolve) {
+      customDialog.resolve(result);
+    }
+    setCustomDialog(null);
+  };
 
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
@@ -539,9 +559,9 @@ export default function App() {
     <div className="min-h-screen flex flex-col font-sans bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-gray-100 pb-28 sm:pb-20 relative transition-colors duration-300 overflow-x-hidden select-none">
       <SplitBillFloatingBubble mainCurrency={mainCurrency} language={language} twoToneTheme={twoToneTheme} />
 
-      {/* GLOBAL CUSTOM ALERT MODAL (BEBAS TULISAN DOMAIN VERCEL) */}
+      {/* GLOBAL CUSTOM MODAL (ALERT & CONFIRM) */}
       <AnimatePresence>
-        {customAlert && (
+        {customDialog && (
           <div className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-5">
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 15 }}
@@ -550,11 +570,25 @@ export default function App() {
               transition={macSpring}
               className="w-full max-w-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl p-6 shadow-2xl text-center flex flex-col items-center gap-4"
             >
-              <div className={`p-3.5 rounded-2xl bg-emerald-500/10 ${currentTheme.icon}`}>
-                {customAlert.toLowerCase().includes('failed') ||
-                customAlert.toLowerCase().includes('gagal') ||
-                customAlert.toLowerCase().includes('error') ? (
-                  <AlertCircle className="w-8 h-8 text-rose-500" />
+              <div
+                className={`p-3.5 rounded-2xl ${
+                  customDialog.type === 'confirm' ||
+                  customDialog.message.toLowerCase().includes('failed') ||
+                  customDialog.message.toLowerCase().includes('gagal') ||
+                  customDialog.message.toLowerCase().includes('error') ||
+                  customDialog.message.toLowerCase().includes('delete') ||
+                  customDialog.message.toLowerCase().includes('hapus')
+                    ? 'bg-rose-500/10 text-rose-500'
+                    : `bg-emerald-500/10 ${currentTheme.icon}`
+                }`}
+              >
+                {customDialog.type === 'confirm' ||
+                customDialog.message.toLowerCase().includes('failed') ||
+                customDialog.message.toLowerCase().includes('gagal') ||
+                customDialog.message.toLowerCase().includes('error') ||
+                customDialog.message.toLowerCase().includes('delete') ||
+                customDialog.message.toLowerCase().includes('hapus') ? (
+                  <AlertCircle className="w-8 h-8" />
                 ) : (
                   <CheckCircle2 className="w-8 h-8" />
                 )}
@@ -565,17 +599,36 @@ export default function App() {
                   WGen Note
                 </h3>
                 <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed break-words">
-                  {customAlert}
+                  {customDialog.message}
                 </p>
               </div>
 
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setCustomAlert(null)}
-                className={`w-full py-3 rounded-2xl bg-gradient-to-r ${currentTheme.btn} text-white font-bold text-xs shadow-lg cursor-pointer mt-1`}
-              >
-                Oke
-              </motion.button>
+              {customDialog.type === 'confirm' ? (
+                <div className="flex gap-2.5 w-full mt-1">
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => handleDialogClose(false)}
+                    className="flex-1 py-3 rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold text-xs cursor-pointer"
+                  >
+                    Batal
+                  </motion.button>
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => handleDialogClose(true)}
+                    className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-rose-500 to-red-600 text-white font-bold text-xs shadow-lg cursor-pointer"
+                  >
+                    Oke
+                  </motion.button>
+                </div>
+              ) : (
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => handleDialogClose(true)}
+                  className={`w-full py-3 rounded-2xl bg-gradient-to-r ${currentTheme.btn} text-white font-bold text-xs shadow-lg cursor-pointer mt-1`}
+                >
+                  Oke
+                </motion.button>
+              )}
             </motion.div>
           </div>
         )}

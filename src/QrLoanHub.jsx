@@ -31,6 +31,10 @@ import {
   getCollateralDropProofs,
   verifyCollateralDropProof
 } from './services/qrLoanService';
+import { showConfirm } from './lib/dialog';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 
 const PUBLIC_WEB_ORIGIN =
   window.location.hostname === 'localhost' && !window.Capacitor
@@ -1201,7 +1205,7 @@ export default function QrLoanHub({
   };
 
   const handleDeleteSingleDropProof = async (dropItem) => {
-    if (!window.confirm(t.confirmDeleteSingleDrop)) return;
+    if (!(await showConfirm(t.confirmDeleteSingleDrop))) return;
 
     const targetAppId = dropItem.application_id;
     const targetDropId = dropItem.id;
@@ -1237,7 +1241,7 @@ export default function QrLoanHub({
 
   const handleDeleteAllDropProofs = async () => {
     if (dropProofList.length === 0) return;
-    if (!window.confirm(t.confirmDeleteAllDrops)) return;
+    if (!(await showConfirm(t.confirmDeleteAllDrops))) return;
 
     const allIdsToBlock = [];
     for (const item of dropProofList) {
@@ -1274,14 +1278,42 @@ export default function QrLoanHub({
       [cardKey]: !prev[cardKey]
     }));
   };
+  const saveBase64ImageToDevice = async (dataUrl, fileName) => {
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const base64Data = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+        const savedFile = await Filesystem.writeFile({
+          path: fileName,
+          data: base64Data,
+          directory: Directory.Cache
+        });
 
-  const handleDownloadDropProofImage = (dropItem) => {
-    if (!dropItem.proof_image) return;
+        await Share.share({
+          title: fileName,
+          url: savedFile.uri,
+          dialogTitle: 'Simpan / Bagikan Gambar'
+        });
+        return;
+      }
+    } catch (err) {
+      console.warn('Fallback download web karena plugin native:', err);
+    }
+
+    // Fallback untuk Web / PWA
     const link = document.createElement('a');
-    link.download = `Bukti-Drop-${dropItem.application_id || 'Jaminan'}-${dropItem.borrower_name || 'Debitur'}.png`;
-    link.href = dropItem.proof_image;
+    link.download = fileName;
+    link.href = dataUrl;
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
   };
+
+
+  const handleDownloadDropProofImage = async (dropItem) => {
+  if (!dropItem.proof_image) return;
+  const fileName = `Bukti-Drop-${dropItem.application_id || 'Jaminan'}-${dropItem.borrower_name || 'Debitur'}.png`;
+  await saveBase64ImageToDevice(dropItem.proof_image, fileName);
+};
 
   // === KONFIRMASI MUTASI TRANSFER MASUK ===
   const handleConfirmTransferFromBorrower = async (report) => {
@@ -1515,10 +1547,9 @@ export default function QrLoanHub({
     ctx.font = '18px sans-serif';
     ctx.fillText('• Sistem Pengajuan & Kontrak Digital •', posterWidth / 2, posterHeight - 50);
 
-    const link = document.createElement('a');
-    link.download = `Poster-QR-Pinjaman-${qrLinkData?.token || 'WGen'}.png`;
-    link.href = exportCanvas.toDataURL('image/png');
-    link.click();
+    // Ganti 4 baris paling bawah di handleDownloadQrPng menjadi:
+    const fileName = `Poster-QR-Pinjaman-${qrLinkData?.token || 'WGen'}.png`;
+    saveBase64ImageToDevice(exportCanvas.toDataURL('image/png'), fileName);
   };
 
   const wrapCanvasText = (ctx, text, maxWidth) => {
