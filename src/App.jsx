@@ -347,32 +347,53 @@ export default function App() {
   };
 
   // Biometric Startup & Background Resume Listener
+  // Biometric Startup & Background Resume Listener
   useEffect(() => {
     if (isPublicApplyRoute) return;
 
     let isMounted = true;
     let appStateListener;
+    let resumeTimer;
+
+    const triggerBioWhenReady = (delay = 600) => {
+      clearTimeout(resumeTimer);
+      resumeTimer = setTimeout(() => {
+        if (!isMounted) return;
+        // Pastikan window sudah benar-benar aktif & mendapat fokus dari Android
+        if (document.visibilityState === 'visible' && document.hasFocus()) {
+          handleUnlockBiometric();
+        } else {
+          // Jika Android belum memberi fokus ke WebView, tunggu event focus
+          const onWindowFocus = () => {
+            window.removeEventListener('focus', onWindowFocus);
+            setTimeout(() => {
+              if (isMounted) handleUnlockBiometric();
+            }, 350);
+          };
+          window.addEventListener('focus', onWindowFocus);
+        }
+      }, delay);
+    };
 
     const isBioActive = localStorage.getItem('wgen_use_biometric') === 'true';
     if (isBioActive) {
       setIsBiometricLocked(true);
-      setTimeout(() => {
-        if (isMounted) handleUnlockBiometric();
-      }, 500);
+      triggerBioWhenReady(600);
     }
 
     const setupAppStateListener = async () => {
       appStateListener = await CapApp.addListener('appStateChange', (state) => {
         if (!state.isActive) {
           backgroundTime.current = Date.now();
+          // Reset ref jika sempat macet saat keluar aplikasi
+          isPromptingBio.current = false;
         } else {
           const isBioEnabled = localStorage.getItem('wgen_use_biometric') === 'true';
           const timeDiff = Date.now() - backgroundTime.current;
           if (isBioEnabled && backgroundTime.current > 0 && timeDiff > 2000) {
+            backgroundTime.current = 0; // Reset agar tidak terpanggil ganda
             setIsBiometricLocked(true);
-            setTimeout(() => {
-              if (isMounted) handleUnlockBiometric();
-            }, 400);
+            triggerBioWhenReady(650);
           }
         }
       });
@@ -382,12 +403,13 @@ export default function App() {
 
     return () => {
       isMounted = false;
+      clearTimeout(resumeTimer);
       if (appStateListener && typeof appStateListener.remove === 'function') {
         appStateListener.remove();
       }
     };
   }, [isPublicApplyRoute]);
-
+  
   // Firebase Auth & Splash Timer
   useEffect(() => {
     if (isPublicApplyRoute) return;

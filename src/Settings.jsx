@@ -91,18 +91,17 @@ export default function Settings({
   };
 
   // --- STATE & HANDLER PROTEKSI BIOMETRIK ANDROID ---
-const handleToggleBiometric = async (e) => {
+// --- STATE & HANDLER PROTEKSI BIOMETRIK ANDROID ---
+  const handleToggleBiometric = async (e) => {
     const isChecked = e.target.checked;
 
     if (isChecked) {
-      // 1. Cek keamanan Protocol (HTTPS / Localhost)
       if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
         alert("Biometrik Android WAJIB menggunakan koneksi HTTPS aman (atau localhost)!");
         setUseBiometric(false);
         return;
       }
 
-      // 2. Cek Hardware
       const supported = await isBiometricSupported();
       if (!supported) {
         alert("Perangkat ini tidak mendukung atau belum mendaftarkan Sidik Jari/PIN Layar di Pengaturan HP.");
@@ -110,23 +109,25 @@ const handleToggleBiometric = async (e) => {
         return;
       }
 
-      // 3. Panggil pendaftaran fingerprint
       const success = await registerAndroidBiometric(auth.currentUser?.uid || "wgen_user");
       if (success) {
         setUseBiometric(true);
-        localStorage.setItem("wgen_use_biometric", "true"); // <--- UBAH DI SINI
-        alert("Biometrik / Sidik Jari berhasil diaktifkan!");
+        localStorage.setItem("wgen_use_biometric", "true");
+        window.dispatchEvent(new Event('biometric-setting-changed'));
+        alert(t.bioAlertActive);
       } else {
         setUseBiometric(false);
-        localStorage.setItem("wgen_use_biometric", "false"); // <--- UBAH DI SINI
+        localStorage.setItem("wgen_use_biometric", "false");
+        alert(t.bioAlertCancel);
       }
     } else {
       setUseBiometric(false);
-      localStorage.setItem("wgen_use_biometric", "false"); // <--- UBAH DI SINI
+      localStorage.setItem("wgen_use_biometric", "false");
       localStorage.removeItem("wgen_biometric_credential_id");
+      window.dispatchEvent(new Event('biometric-setting-changed'));
     }
   };
- 
+   
   // --- HANDLER FORMAT INPUT NOMINAL DENGAN PEMISAH RIBUAN ---
   const handleCalcAmountChange = (e) => {
     const rawValue = e.target.value.replace(/,/g, '');
