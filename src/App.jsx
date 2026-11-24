@@ -15,6 +15,8 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { App as CapApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
+import ApkPortalPage from './ApkPortalPage';
 
 // Firebase Auth, Biometric & Dialog Helper
 import { auth } from './lib/firebase';
@@ -445,7 +447,10 @@ export default function App() {
   if (isPublicApplyRoute) {
     return <LoanApplyPage />;
   }
-
+    // Jika dibuka lewat browser (Vercel), tampilkan halaman download APK
+  if (!Capacitor.isNativePlatform()) {
+  return <ApkPortalPage />;
+  }
   const handleLanguageChange = (newLang) => {
     setLanguage(newLang);
     localStorage.setItem('wgen_lang', newLang);
