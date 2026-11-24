@@ -1,10 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Download, ShieldCheck, RefreshCw, CheckCircle2 } from 'lucide-react';
 import logoWGen from './assets/logo-w.png';
 
-const APK_DOWNLOAD_URL = 'https://github.com/zd-devp-w/wgen/releases/latest/download/WGen.Note.apk';
-const APP_VERSION = 'v1.0.0';
-const APP_SIZE = '23 MB';
+const GITHUB_API_URL = 'https://api.github.com/repos/zd-devp-w/wgen/releases/latest';
+const FALLBACK_DOWNLOAD_URL = 'https://github.com/zd-devp-w/wgen/releases/latest/download/WGen.Note.apk';
 
 const TRANSLATIONS = {
   id: {
@@ -65,13 +64,48 @@ function detectSystemLanguage() {
   if (sysLang.startsWith('ja')) return 'jp';
   if (sysLang.startsWith('ar')) return 'ar';
   if (sysLang.startsWith('zh')) return 'cn';
-  return 'en'; // Default ke Inggris jika bahasa HP di luar 4 bahasa di atas
+  return 'en';
 }
 
 export default function ApkPortalPage() {
   const lang = useMemo(() => detectSystemLanguage(), []);
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
   const isRTL = lang === 'ar';
+
+  // State dinamis dengan nilai default (fallback)
+  const [releaseInfo, setReleaseInfo] = useState({
+    version: 'v1.0.0',
+    size: '23 MB',
+    downloadUrl: FALLBACK_DOWNLOAD_URL,
+  });
+
+  useEffect(() => {
+    async function fetchLatestRelease() {
+      try {
+        const response = await fetch(GITHUB_API_URL);
+        if (!response.ok) return;
+
+        const data = await response.json();
+        // Cari file yang berakhiran .apk di dalam daftar assets release
+        const apkAsset = data.assets?.find((asset) => asset.name.endsWith('.apk'));
+
+        if (apkAsset) {
+          // Konversi ukuran dari Bytes ke Megabytes (MB)
+          const sizeInMB = (apkAsset.size / (1024 * 1024)).toFixed(1) + ' MB';
+
+          setReleaseInfo({
+            version: data.tag_name || 'v1.0.0',
+            size: sizeInMB,
+            downloadUrl: apkAsset.browser_download_url || FALLBACK_DOWNLOAD_URL,
+          });
+        }
+      } catch (error) {
+        console.error('Gagal mengambil data rilis GitHub:', error);
+      }
+    }
+
+    fetchLatestRelease();
+  }, []);
 
   return (
     <div
@@ -96,22 +130,22 @@ export default function ApkPortalPage() {
           </p>
         </div>
 
-        {/* Info Versi & Ukuran */}
+        {/* Info Versi & Ukuran Otomatis */}
         <div className="w-full bg-gray-950/60 border border-gray-800 rounded-2xl p-4 flex justify-around text-xs">
           <div>
             <p className="text-gray-500">{t.versionLabel}</p>
-            <p className="font-bold text-gray-200 mt-0.5">{APP_VERSION}</p>
+            <p className="font-bold text-gray-200 mt-0.5">{releaseInfo.version}</p>
           </div>
           <div className="border-l border-gray-800" />
           <div>
             <p className="text-gray-500">{t.sizeLabel}</p>
-            <p className="font-bold text-gray-200 mt-0.5">{APP_SIZE}</p>
+            <p className="font-bold text-gray-200 mt-0.5">{releaseInfo.size}</p>
           </div>
         </div>
 
         {/* Tombol Download Langsung */}
         <a
-          href={APK_DOWNLOAD_URL}
+          href={releaseInfo.downloadUrl}
           className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold text-sm shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2.5 transition-all"
         >
           <Download className="w-5 h-5" />
